@@ -24,14 +24,11 @@
 #include "webrtc/modules/audio_coding/codecs/isac/main/interface/audio_encoder_isac.h"
 #include "webrtc/modules/audio_coding/codecs/opus/interface/audio_encoder_opus.h"
 #include "webrtc/modules/audio_coding/codecs/pcm16b/include/audio_encoder_pcm16b.h"
+#include "webrtc/modules/audio_coding/codecs/g729/include/audio_encoder_g729.h"
 #include "webrtc/modules/audio_coding/neteq/tools/resample_input_audio_file.h"
 #include "webrtc/system_wrappers/interface/data_log.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/testsupport/fileutils.h"
-
-#ifdef WEBRTC_CODEC_G729
-#include "webrtc/modules/audio_coding/codecs/g729/include/audio_encoder_g729.h"
-#endif
 
 namespace webrtc {
 
@@ -471,7 +468,6 @@ class AudioDecoderOpusStereoTest : public AudioDecoderOpusTest {
   }
 };
 
-#ifdef WEBRTC_CODEC_G729
 class AudioDecoderG729Test : public AudioDecoderTest {
  protected:
   AudioDecoderG729Test() : AudioDecoderTest() {
@@ -487,7 +483,6 @@ class AudioDecoderG729Test : public AudioDecoderTest {
     audio_encoder_.reset(new AudioEncoderG729(config));
   }
 };
-#endif // WEBRTC_CODEC_G729
 
 TEST_F(AudioDecoderPcmUTest, EncodeDecode) {
   int tolerance = 251;
@@ -620,7 +615,6 @@ TEST_F(AudioDecoderOpusStereoTest, EncodeDecode) {
   EXPECT_FALSE(decoder_->HasDecodePlc());
 }
 
-#ifdef WEBRTC_CODEC_G729
 TEST_F(AudioDecoderG729Test, EncodeDecode) {
   int tolerance = 251;
   double mse = 1734.0;
@@ -629,7 +623,6 @@ TEST_F(AudioDecoderG729Test, EncodeDecode) {
   ReInitTest();
   EXPECT_TRUE(decoder_->HasDecodePlc());
 }
-#endif // WEBRTC_CODEC_G729
 
 TEST(AudioDecoder, CodecSampleRateHz) {
   EXPECT_EQ(8000, CodecSampleRateHz(kDecoderPCMu));
