@@ -157,7 +157,7 @@ P2PTransportChannel::P2PTransportChannel(const std::string& content_name,
     sort_dirty_(false),
     was_writable_(false),
     protocol_type_(ICEPROTO_HYBRID),
-    remote_ice_mode_(ICEMODE_FULL),
+    remote_ice_mode_(ICEMODE_NONE),
     ice_role_(ICEROLE_UNKNOWN),
     tiebreaker_(0),
     remote_candidate_generation_(0) {
@@ -1208,6 +1208,8 @@ Connection* P2PTransportChannel::FindNextPingableConnection() {
 //    b) we're doing LITE ICE AND
 //      b.1) |conn| is the best_connection AND
 //      b.2) |conn| is writable.
+//    c) Remote peer doesn't support ICE AND
+//      c.1) |conn| has a local candidate
 void P2PTransportChannel::PingConnection(Connection* conn) {
   bool use_candidate = false;
   if (protocol_type_ == ICEPROTO_RFC5245) {
@@ -1218,6 +1220,12 @@ void P2PTransportChannel::PingConnection(Connection* conn) {
                       (conn->priority() > best_connection_->priority());
     } else if (remote_ice_mode_ == ICEMODE_LITE && conn == best_connection_) {
       use_candidate = best_connection_->writable();
+    } else if (remote_ice_mode_ == ICEMODE_NONE &&
+               conn->local_candidate().type() == "local") {
+      best_connection_ = conn;
+      conn->ForceStart();
+      OnReadyToSend(conn);
+      return;
     }
   }
   conn->set_use_candidate_attr(use_candidate);

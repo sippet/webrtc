@@ -31,6 +31,9 @@
 #ifdef WEBRTC_CODEC_OPUS
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 #endif
+#ifdef WEBRTC_CODEC_G729
+#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#endif
 #ifdef WEBRTC_CODEC_PCM16
 #include "webrtc/modules/audio_coding/codecs/pcm16b/include/pcm16b.h"
 #endif
@@ -299,6 +302,41 @@ bool AudioDecoderOpus::PacketHasFec(const uint8_t* encoded,
 }
 #endif
 
+// G729
+#ifdef WEBRTC_CODEC_G729
+AudioDecoderG729::AudioDecoderG729() {
+  WebRtcG729_DecoderCreate(&dec_state_);
+}
+
+AudioDecoderG729::~AudioDecoderG729() {
+  WebRtcG729_DecoderFree(dec_state_);
+}
+
+int AudioDecoderG729::Decode(const uint8_t* encoded, size_t encoded_len,
+                             int16_t* decoded, SpeechType* speech_type) {
+  int16_t temp_type = 1;  // Default is speech.
+  int16_t ret = WebRtcG729_Decode(dec_state_, encoded,
+                                  static_cast<int16_t>(encoded_len), decoded,
+                                  &temp_type);
+  *speech_type = ConvertSpeechType(temp_type);
+  return ret;
+}
+
+int AudioDecoderG729::DecodePlc(int num_frames, int16_t* decoded) {
+  return WebRtcG729_DecodePlc(dec_state_, decoded, num_frames);
+}
+
+int AudioDecoderG729::Init() {
+  return WebRtcG729_DecoderInit(dec_state_);
+}
+
+int AudioDecoderG729::PacketDuration(const uint8_t* encoded,
+                                     size_t encoded_len) {
+  // 10 bytes = 80 samples (10ms @ 8kHz)
+  return (encoded_len / L_PACKED_G729A) * 80;
+}
+#endif
+
 AudioDecoderCng::AudioDecoderCng() {
   CHECK_EQ(0, WebRtcCng_CreateDec(&dec_state_));
 }
@@ -345,6 +383,9 @@ bool CodecSupported(NetEqDecoder codec_type) {
 #ifdef WEBRTC_CODEC_OPUS
     case kDecoderOpus:
     case kDecoderOpus_2ch:
+#endif
+#ifdef WEBRTC_CODEC_G729
+    case kDecoderG729:
 #endif
     case kDecoderRED:
     case kDecoderAVT:
@@ -413,6 +454,11 @@ int CodecSampleRateHz(NetEqDecoder codec_type) {
     case kDecoderOpus:
     case kDecoderOpus_2ch: {
       return 48000;
+    }
+#endif
+#ifdef WEBRTC_CODEC_G729
+    case kDecoderG729: {
+      return 8000;
     }
 #endif
     case kDecoderCNGswb48kHz: {
@@ -485,6 +531,10 @@ AudioDecoder* CreateAudioDecoder(NetEqDecoder codec_type) {
       return new AudioDecoderOpus(1);
     case kDecoderOpus_2ch:
       return new AudioDecoderOpus(2);
+#endif
+#ifdef WEBRTC_CODEC_G729
+    case kDecoderG729:
+      return new AudioDecoderG729;
 #endif
     case kDecoderCNGnb:
     case kDecoderCNGwb:

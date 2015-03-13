@@ -40,6 +40,9 @@
     ['include_opus==1', {
       'includes': ['audio_coding/codecs/opus/opus.gypi',],
     }],
+    ['include_g729==1', {
+      'includes': ['audio_coding/codecs/g729/g729.gypi',],
+    }],
     ['include_tests==1', {
       'includes': [
         'audio_coding/codecs/isac/isac_test.gypi',
@@ -405,6 +408,14 @@
               ],
             }],
           ],
+        },
+        {
+          'target_name': 'video_capture_module_internal_impl',
+          'type': 'none'
+        },
+        {
+          'target_name': 'video_render_module_internal_impl',
+          'type': 'none'
         },
       ],
       'conditions': [

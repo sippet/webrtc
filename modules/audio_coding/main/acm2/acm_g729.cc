@@ -14,7 +14,7 @@
 // NOTE! G.729 is not included in the open-source package. Modify this file
 // or your codec API to match the function calls and names of used G.729 API
 // file.
-#include "webrtc/modules/audio_coding/main/codecs/g729/interface/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_common_defs.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_receiver.h"
 #include "webrtc/system_wrappers/interface/trace.h"
@@ -58,18 +58,18 @@ int16_t ACMG729::InternalCreateEncoder() { return -1; }
 void ACMG729::DestructEncoderSafe() { return; }
 
 #else  //===================== Actual Implementation =======================
+
 ACMG729::ACMG729(int16_t codec_id)
     : codec_id_(codec_id),
-      has_internal_dtx_(),
+      has_internal_dtx_(true),
       encoder_inst_ptr_(NULL) {}
 
 ACMG729::~ACMG729() {
   if (encoder_inst_ptr_ != NULL) {
     // Delete encoder memory
-    WebRtcG729_FreeEnc(encoder_inst_ptr_);
+    WebRtcG729_EncoderFree(encoder_inst_ptr_);
     encoder_inst_ptr_ = NULL;
   }
-  return;
 }
 
 int16_t ACMG729::InternalEncode(uint8_t* bitstream,
@@ -84,7 +84,7 @@ int16_t ACMG729::InternalEncode(uint8_t* bitstream,
     // audio, number of samples and bitsream
     tmp_len_byte = WebRtcG729_Encode(
         encoder_inst_ptr_, &in_audio_[in_audio_ix_read_], 80,
-        reinterpret_cast<int16_t*>(&(bitstream[*bitstream_len_byte])));
+        &bitstream[*bitstream_len_byte]);
 
     // increment the read index this tell the caller that how far
     // we have gone forward in reading the audio buffer
@@ -197,7 +197,7 @@ int32_t ACMG729::ReplaceInternalDTXSafe(const bool replace_internal_dtx) {
       ACMGenericCodec::DisableDTX();
     }
     has_internal_dtx_ = !replace_internal_dtx;
-    int16_t status = SetVADSafe(old_enable_dtx, old_enable_vad, old_mode);
+    int16_t status = SetVADSafe(&old_enable_dtx, &old_enable_vad, &old_mode);
     // Check if VAD status has changed from inactive to active, or if error was
     // reported
     if (status == 1) {
@@ -230,7 +230,7 @@ ACMGenericCodec* ACMG729::CreateInstance(void) {
 
 int16_t ACMG729::InternalCreateEncoder() {
   // Create encoder memory
-  return WebRtcG729_CreateEnc(&encoder_inst_ptr_);
+  return WebRtcG729_EncoderCreate(&encoder_inst_ptr_);
 }
 
 void ACMG729::DestructEncoderSafe() {
@@ -238,7 +238,7 @@ void ACMG729::DestructEncoderSafe() {
   encoder_exist_ = false;
   encoder_initialized_ = false;
   if (encoder_inst_ptr_ != NULL) {
-    WebRtcG729_FreeEnc(encoder_inst_ptr_);
+    WebRtcG729_EncoderFree(encoder_inst_ptr_);
     encoder_inst_ptr_ = NULL;
   }
 }

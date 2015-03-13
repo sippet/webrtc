@@ -14,8 +14,8 @@
 #include "webrtc/modules/audio_coding/main/acm2/acm_generic_codec.h"
 
 // forward declaration
-struct G729_encinst_t_;
-struct G729_decinst_t_;
+typedef struct WebRtcG729EncInst G729EncInst;
+typedef struct WebRtcG729DecInst G729DecInst;
 
 namespace webrtc {
 
@@ -46,7 +46,7 @@ class ACMG729 : public ACMGenericCodec {
 
   int32_t IsInternalDTXReplacedSafe(bool* internal_dtx_replaced);
 
-  G729_encinst_t_* encoder_inst_ptr_;
+  G729EncInst* encoder_inst_ptr_;
 };
 
 }  // namespace acm2
