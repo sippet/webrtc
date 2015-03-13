@@ -30,6 +30,9 @@
 #ifdef WEBRTC_CODEC_OPUS
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 #endif
+#ifdef WEBRTC_CODEC_G729
+#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#endif
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -185,6 +188,24 @@ class AudioDecoderOpus : public AudioDecoder {
 };
 #endif
 
+#ifdef WEBRTC_CODEC_G729
+class AudioDecoderG729 : public AudioDecoder {
+ public:
+  AudioDecoderG729();
+  virtual ~AudioDecoderG729();
+  virtual int Decode(const uint8_t* encoded, size_t encoded_len,
+                     int16_t* decoded, SpeechType* speech_type);
+  virtual bool HasDecodePlc() const { return true; }
+  virtual int DecodePlc(int num_frames, int16_t* decoded);
+  virtual int Init();
+  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len);
+
+ private:
+  G729DecInst* dec_state_;
+  DISALLOW_COPY_AND_ASSIGN(AudioDecoderG729);
+};
+#endif
+
 // AudioDecoderCng is a special type of AudioDecoder. It inherits from
 // AudioDecoder just to fit in the DecoderDatabase. None of the class methods
 // should be used, except constructor, destructor, and accessors.
@@ -240,6 +261,7 @@ enum NetEqDecoder {
   kDecoderArbitrary,
   kDecoderOpus,
   kDecoderOpus_2ch,
+  kDecoderG729,
 };
 
 // Returns true if |codec_type| is supported.

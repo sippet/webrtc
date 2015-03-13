@@ -1250,6 +1250,12 @@ std::string Connection::ToSensitiveString() const {
   return ToString();
 }
 
+void Connection::ForceStart() {
+  set_write_state(STATE_WRITABLE);
+  set_read_state(STATE_READABLE);
+  set_state(STATE_SUCCEEDED);
+}
+
 void Connection::OnConnectionRequestResponse(ConnectionRequest* request,
                                              StunMessage* response) {
   // We've already validated that this is a STUN binding response with

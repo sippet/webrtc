@@ -55,7 +55,8 @@ enum IceRole {
 // ICE RFC 5245 implementation type.
 enum IceMode {
   ICEMODE_FULL,  // As defined in http://tools.ietf.org/html/rfc5245#section-4.1
-  ICEMODE_LITE   // As defined in http://tools.ietf.org/html/rfc5245#section-4.2
+  ICEMODE_LITE,  // As defined in http://tools.ietf.org/html/rfc5245#section-4.2
+  ICEMODE_NONE   // No ICE support, works in compatibility mode
 };
 
 // RFC 4145 - http://tools.ietf.org/html/rfc4145#section-4
@@ -83,7 +84,7 @@ typedef std::vector<Candidate> Candidates;
 
 struct TransportDescription {
   TransportDescription()
-      : ice_mode(ICEMODE_FULL),
+      : ice_mode(ICEMODE_NONE),
         connection_role(CONNECTIONROLE_NONE) {}
 
   TransportDescription(const std::string& transport_type,
@@ -108,7 +109,9 @@ struct TransportDescription {
       : transport_type(transport_type),
         ice_ufrag(ice_ufrag),
         ice_pwd(ice_pwd),
-        ice_mode(ICEMODE_FULL),
+        ice_mode(
+            (!ice_ufrag.empty() || !ice_pwd.empty())
+                ? ICEMODE_FULL : ICEMODE_NONE),
         connection_role(CONNECTIONROLE_NONE) {}
   TransportDescription(const TransportDescription& from)
       : transport_type(from.transport_type),
@@ -117,6 +120,7 @@ struct TransportDescription {
         ice_pwd(from.ice_pwd),
         ice_mode(from.ice_mode),
         connection_role(from.connection_role),
+        default_address(from.default_address),
         identity_fingerprint(CopyFingerprint(from.identity_fingerprint.get())),
         candidates(from.candidates) {}
 
@@ -131,6 +135,7 @@ struct TransportDescription {
     ice_pwd = from.ice_pwd;
     ice_mode = from.ice_mode;
     connection_role = from.connection_role;
+    default_address = from.default_address;
 
     identity_fingerprint.reset(CopyFingerprint(
         from.identity_fingerprint.get()));
@@ -161,6 +166,7 @@ struct TransportDescription {
   std::string ice_pwd;
   IceMode ice_mode;
   ConnectionRole connection_role;
+  rtc::SocketAddress default_address;
 
   rtc::scoped_ptr<rtc::SSLFingerprint> identity_fingerprint;
   Candidates candidates;

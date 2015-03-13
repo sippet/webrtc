@@ -26,6 +26,10 @@
         'audio_coding_dependencies': ['webrtc_opus',],
         'audio_coding_defines': ['WEBRTC_CODEC_OPUS',],
       }],
+      ['include_g729==1', {
+        'audio_coding_dependencies': ['webrtc_g729',],
+        'audio_coding_defines': ['WEBRTC_CODEC_G729',],
+      }],
     ],
   },
   'targets': [

@@ -29,6 +29,10 @@
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/testsupport/fileutils.h"
 
+#ifdef WEBRTC_CODEC_G729
+#include "webrtc/modules/audio_coding/codecs/g729/include/audio_encoder_g729.h"
+#endif
+
 namespace webrtc {
 
 namespace {
@@ -467,6 +471,24 @@ class AudioDecoderOpusStereoTest : public AudioDecoderOpusTest {
   }
 };
 
+#ifdef WEBRTC_CODEC_G729
+class AudioDecoderG729Test : public AudioDecoderTest {
+ protected:
+  AudioDecoderG729Test() : AudioDecoderTest() {
+    frame_size_ = 80;
+    data_length_ = 10 * frame_size_;
+    channels_ = 1;
+    delete decoder_;
+    decoder_ = new AudioDecoderG729;
+    AudioEncoderG729::Config config;
+    config.frame_size_ms = 10;
+    config.num_channels = 1;
+    config.payload_type = payload_type_;
+    audio_encoder_.reset(new AudioEncoderG729(config));
+  }
+};
+#endif // WEBRTC_CODEC_G729
+
 TEST_F(AudioDecoderPcmUTest, EncodeDecode) {
   int tolerance = 251;
   double mse = 1734.0;
@@ -598,6 +620,17 @@ TEST_F(AudioDecoderOpusStereoTest, EncodeDecode) {
   EXPECT_FALSE(decoder_->HasDecodePlc());
 }
 
+#ifdef WEBRTC_CODEC_G729
+TEST_F(AudioDecoderG729Test, EncodeDecode) {
+  int tolerance = 251;
+  double mse = 1734.0;
+  EXPECT_TRUE(CodecSupported(kDecoderG729));
+  EncodeDecodeTest(data_length_ / frame_size_ * 10, tolerance, mse);
+  ReInitTest();
+  EXPECT_TRUE(decoder_->HasDecodePlc());
+}
+#endif // WEBRTC_CODEC_G729
+
 TEST(AudioDecoder, CodecSampleRateHz) {
   EXPECT_EQ(8000, CodecSampleRateHz(kDecoderPCMu));
   EXPECT_EQ(8000, CodecSampleRateHz(kDecoderPCMa));
@@ -618,6 +651,7 @@ TEST(AudioDecoder, CodecSampleRateHz) {
   EXPECT_EQ(8000, CodecSampleRateHz(kDecoderPCM16B_5ch));
   EXPECT_EQ(16000, CodecSampleRateHz(kDecoderG722));
   EXPECT_EQ(16000, CodecSampleRateHz(kDecoderG722_2ch));
+  EXPECT_EQ(8000, CodecSampleRateHz(kDecoderG729));
   EXPECT_EQ(-1, CodecSampleRateHz(kDecoderRED));
   EXPECT_EQ(-1, CodecSampleRateHz(kDecoderAVT));
   EXPECT_EQ(8000, CodecSampleRateHz(kDecoderCNGnb));
@@ -650,6 +684,7 @@ TEST(AudioDecoder, CodecSupported) {
   EXPECT_TRUE(CodecSupported(kDecoderPCM16B_5ch));
   EXPECT_TRUE(CodecSupported(kDecoderG722));
   EXPECT_TRUE(CodecSupported(kDecoderG722_2ch));
+  EXPECT_TRUE(CodecSupported(kDecoderG729));
   EXPECT_TRUE(CodecSupported(kDecoderRED));
   EXPECT_TRUE(CodecSupported(kDecoderAVT));
   EXPECT_TRUE(CodecSupported(kDecoderCNGnb));
