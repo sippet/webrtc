@@ -23,9 +23,14 @@
         'codecs': ['webrtc_opus',],
         'neteq_defines': ['WEBRTC_CODEC_OPUS',],
       }],
+      ['include_g729==1', {
+        'codecs': ['G729',],
+        'neteq_defines': ['WEBRTC_CODEC_G729',],
+      }],
     ],
     'neteq_dependencies': [
       '<@(codecs)',
+      '<(DEPTH)/third_party/opus/opus.gyp:opus',
       '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
       '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
       'audio_decoder_interface',
@@ -37,10 +42,24 @@
       'type': 'static_library',
       'dependencies': [
         '<@(neteq_dependencies)',
-        '<(webrtc_root)/common.gyp:webrtc_common',
       ],
       'defines': [
         '<@(neteq_defines)',
+      ],
+      'include_dirs': [
+        # Need Opus header files for the audio classifier.
+        '<(DEPTH)/third_party/opus/src/celt',
+        '<(DEPTH)/third_party/opus/src/src',
+      ],
+      'direct_dependent_settings': {
+        'include_dirs': [
+          # Need Opus header files for the audio classifier.
+          '<(DEPTH)/third_party/opus/src/celt',
+          '<(DEPTH)/third_party/opus/src/src',
+        ],
+      },
+      'export_dependent_settings': [
+        '<(DEPTH)/third_party/opus/opus.gyp:opus',
       ],
       'sources': [
         'interface/neteq.h',
@@ -125,6 +144,7 @@
             '<(DEPTH)/testing/gtest.gyp:gtest',
             '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
             '<(webrtc_root)/test/test.gyp:test_support_main',
+            '<(DEPTH)/base/base.gyp:base',
           ],
           'defines': [
             'AUDIO_DECODER_UNITTEST',
@@ -134,6 +154,9 @@
             'WEBRTC_CODEC_ISAC',
             'WEBRTC_CODEC_PCM16',
             '<@(neteq_defines)',
+          ],
+          'include_dirs': [
+            '<(DEPTH)/third_party/webrtc/overrides',
           ],
           'sources': [
             'audio_decoder_impl.cc',
