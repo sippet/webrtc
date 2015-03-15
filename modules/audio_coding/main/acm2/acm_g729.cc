@@ -60,9 +60,10 @@ void ACMG729::DestructEncoderSafe() { return; }
 #else  //===================== Actual Implementation =======================
 
 ACMG729::ACMG729(int16_t codec_id)
-    : codec_id_(codec_id),
-      has_internal_dtx_(true),
-      encoder_inst_ptr_(NULL) {}
+    : encoder_inst_ptr_(NULL) {
+  codec_id_ = codec_id;
+  has_internal_dtx_ = true;
+}
 
 ACMG729::~ACMG729() {
   if (encoder_inst_ptr_ != NULL) {
