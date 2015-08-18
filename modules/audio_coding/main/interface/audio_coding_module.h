@@ -28,6 +28,7 @@ struct CodecInst;
 struct WebRtcRTPHeader;
 class AudioFrame;
 class RTPFragmentationHeader;
+class AudioEncoderMutable;
 
 #define WEBRTC_10MS_PCM_AUDIO 960  // 16 bits super wideband 48 kHz
 
@@ -58,7 +59,7 @@ class ACMVADCallback {
  public:
   virtual ~ACMVADCallback() {}
 
-  virtual int32_t InFrameType(int16_t frameType) = 0;
+  virtual int32_t InFrameType(FrameType frame_type) = 0;
 };
 
 // Callback class used for reporting receiver statistics
@@ -74,7 +75,7 @@ class ACMVQMonCallback {
       const uint16_t delayMS) = 0;  // average delay in ms
 };
 
-class AudioCodingModule: public Module {
+class AudioCodingModule {
  protected:
   AudioCodingModule() {}
 
@@ -99,6 +100,7 @@ class AudioCodingModule: public Module {
   //
   static AudioCodingModule* Create(int id);
   static AudioCodingModule* Create(int id, Clock* clock);
+  static AudioCodingModule* Create(const Config& config);
   virtual ~AudioCodingModule() {};
 
   ///////////////////////////////////////////////////////////////////////////
@@ -191,20 +193,6 @@ class AudioCodingModule: public Module {
   //
 
   ///////////////////////////////////////////////////////////////////////////
-  // int32_t InitializeSender()
-  // Any encoder-related state of ACM will be initialized to the
-  // same state when ACM is created. This will not interrupt or
-  // effect decoding functionality of ACM. ACM will lose all the
-  // encoding-related settings by calling this function.
-  // For instance, a send codec has to be registered again.
-  //
-  // Return value:
-  //   -1 if failed to initialize,
-  //    0 if succeeded.
-  //
-  virtual int32_t InitializeSender() = 0;
-
-  ///////////////////////////////////////////////////////////////////////////
   // int32_t ResetEncoder()
   // This API resets the states of encoder. All the encoder settings, such as
   // send-codec or VAD/DTX, will be preserved.
@@ -244,6 +232,11 @@ class AudioCodingModule: public Module {
   //
   virtual int32_t RegisterSendCodec(const CodecInst& send_codec) = 0;
 
+  // Registers |external_speech_encoder| as encoder. The new encoder will
+  // replace any previously registered speech encoder (internal or external).
+  virtual void RegisterExternalSendCodec(
+      AudioEncoderMutable* external_speech_encoder) = 0;
+
   ///////////////////////////////////////////////////////////////////////////
   // int32_t SendCodec()
   // Get parameters for the codec currently registered as send codec.
@@ -276,6 +269,11 @@ class AudioCodingModule: public Module {
   //   -1 if an error is happened.
   //
   virtual int32_t SendBitrate() const = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
+  // Sets the bitrate to the specified value in bits/sec. If the value is not
+  // supported by the codec, it will choose another appropriate value.
+  virtual void SetBitRate(int bitrate_bps) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t SetReceivedEstimatedBandwidth()
@@ -315,9 +313,12 @@ class AudioCodingModule: public Module {
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t Add10MsData()
-  // Add 10MS of raw (PCM) audio data to the encoder. If the sampling
+  // Add 10MS of raw (PCM) audio data and encode it. If the sampling
   // frequency of the audio does not match the sampling frequency of the
-  // current encoder ACM will resample the audio.
+  // current encoder ACM will resample the audio. If an encoded packet was
+  // produced, it will be delivered via the callback object registered using
+  // RegisterTransportCallback, and the return value from this function will
+  // be the number of bytes encoded.
   //
   // Input:
   //   -audio_frame        : the input audio frame, containing raw audio
@@ -326,10 +327,8 @@ class AudioCodingModule: public Module {
   //                         AudioFrame.
   //
   // Return value:
-  //      0   successfully added the frame.
-  //     -1   some error occurred and data is not added.
-  //   < -1   to add the frame to the buffer n samples had to be
-  //          overwritten, -n is the return value in this case.
+  //   >= 0   number of bytes encoded.
+  //     -1   some error occurred.
   //
   virtual int32_t Add10MsData(const AudioFrame& audio_frame) = 0;
 
@@ -876,17 +875,19 @@ class AudioCodingModule: public Module {
 
   ///////////////////////////////////////////////////////////////////////////
   // int SetOpusApplication()
-  // Sets the intended application for the Opus encoder. Opus uses this to
-  // optimize the encoding for applications like VOIP and music.
+  // Sets the intended application if current send codec is Opus. Opus uses this
+  // to optimize the encoding for applications like VOIP and music. Currently,
+  // two modes are supported: kVoip and kAudio.
   //
   // Input:
-  //   - application      : intended application.
+  //   - application            : intended application.
   //
   // Return value:
-  //   -1 if failed or on codecs other than Opus.
-  //    0 if succeeded.
+  //   -1 if current send codec is not Opus or error occurred in setting the
+  //      Opus application mode.
+  //    0 if the Opus application mode is successfully set.
   //
-  virtual int SetOpusApplication(OpusApplicationMode /*application*/) = 0;
+  virtual int SetOpusApplication(OpusApplicationMode application) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int SetOpusMaxPlaybackRate()
@@ -900,16 +901,37 @@ class AudioCodingModule: public Module {
   // Return value:
   //   -1 if current send codec is not Opus or
   //      error occurred in setting the maximum playback rate,
-  //    0 maximum bandwidth is set successfully.
+  //    0 if maximum bandwidth is set successfully.
   //
   virtual int SetOpusMaxPlaybackRate(int frequency_hz) = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
+  // EnableOpusDtx()
+  // Enable the DTX, if current send codec is Opus.
+  //
+  // Return value:
+  //   -1 if current send codec is not Opus or error occurred in enabling the
+  //      Opus DTX.
+  //    0 if Opus DTX is enabled successfully.
+  //
+  virtual int EnableOpusDtx() = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
+  // int DisableOpusDtx()
+  // If current send codec is Opus, disables its internal DTX.
+  //
+  // Return value:
+  //   -1 if current send codec is not Opus or error occurred in disabling DTX.
+  //    0 if Opus DTX is disabled successfully.
+  //
+  virtual int DisableOpusDtx() = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   //   statistics
   //
 
   ///////////////////////////////////////////////////////////////////////////
-  // int32_t  NetworkStatistics()
+  // int32_t  GetNetworkStatistics()
   // Get network statistics. Note that the internal statistics of NetEq are
   // reset by this call.
   //
@@ -920,8 +942,8 @@ class AudioCodingModule: public Module {
   //   -1 if failed to set the network statistics,
   //    0 if statistics are set successfully.
   //
-  virtual int32_t NetworkStatistics(
-      ACMNetworkStatistics* network_statistics) = 0;
+  virtual int32_t GetNetworkStatistics(
+      NetworkStatistics* network_statistics) = 0;
 
   //
   // Set an initial delay for playout.
@@ -978,15 +1000,7 @@ class ReceiverInfo;
 class AudioCoding {
  public:
   struct Config {
-    Config()
-        : neteq_config(),
-          clock(Clock::GetRealTimeClock()),
-          transport(NULL),
-          vad_callback(NULL),
-          play_dtmf(true),
-          initial_playout_delay_ms(0),
-          playout_channels(1),
-          playout_frequency_hz(32000) {}
+    Config();
 
     AudioCodingModule::Config ToOldConfig() const {
       AudioCodingModule::Config old_config;
@@ -1107,7 +1121,7 @@ class AudioCoding {
 
   // Returns the network statistics. Note that the internal statistics of NetEq
   // are reset by this call. Returns true if successful, false otherwise.
-  virtual bool NetworkStatistics(ACMNetworkStatistics* network_statistics) = 0;
+  virtual bool GetNetworkStatistics(NetworkStatistics* network_statistics) = 0;
 
   // Enables NACK and sets the maximum size of the NACK list. If NACK is already
   // enabled then the maximum NACK list size is modified accordingly. Returns

@@ -14,6 +14,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/md5digest.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_receive_test.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_send_test.h"
@@ -29,7 +30,6 @@
 #include "webrtc/system_wrappers/interface/clock.h"
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/system_wrappers/interface/sleep.h"
 #include "webrtc/system_wrappers/interface/thread_wrapper.h"
 #include "webrtc/test/testsupport/fileutils.h"
@@ -81,13 +81,12 @@ class PacketizationCallbackStub : public AudioPacketizationCallback {
       : num_calls_(0),
         crit_sect_(CriticalSectionWrapper::CreateCriticalSection()) {}
 
-  virtual int32_t SendData(
-      FrameType frame_type,
-      uint8_t payload_type,
-      uint32_t timestamp,
-      const uint8_t* payload_data,
-      size_t payload_len_bytes,
-      const RTPFragmentationHeader* fragmentation) OVERRIDE {
+  int32_t SendData(FrameType frame_type,
+                   uint8_t payload_type,
+                   uint32_t timestamp,
+                   const uint8_t* payload_data,
+                   size_t payload_len_bytes,
+                   const RTPFragmentationHeader* fragmentation) override {
     CriticalSectionScoped lock(crit_sect_.get());
     ++num_calls_;
     last_payload_vec_.assign(payload_data, payload_data + payload_len_bytes);
@@ -112,7 +111,7 @@ class PacketizationCallbackStub : public AudioPacketizationCallback {
  private:
   int num_calls_ GUARDED_BY(crit_sect_);
   std::vector<uint8_t> last_payload_vec_ GUARDED_BY(crit_sect_);
-  const scoped_ptr<CriticalSectionWrapper> crit_sect_;
+  const rtc::scoped_ptr<CriticalSectionWrapper> crit_sect_;
 };
 
 class AudioCodingModuleTest : public ::testing::Test {
@@ -124,9 +123,9 @@ class AudioCodingModuleTest : public ::testing::Test {
 
   ~AudioCodingModuleTest() {}
 
-  void TearDown() OVERRIDE {}
+  void TearDown() override {}
 
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     rtp_utility_->Populate(&rtp_header_);
 
     input_frame_.sample_rate_hz_ = kSampleRateHz;
@@ -188,8 +187,8 @@ class AudioCodingModuleTest : public ::testing::Test {
   }
 
   AudioCoding::Config config_;
-  scoped_ptr<RtpUtility> rtp_utility_;
-  scoped_ptr<AudioCoding> acm_;
+  rtc::scoped_ptr<RtpUtility> rtp_utility_;
+  rtc::scoped_ptr<AudioCoding> acm_;
   PacketizationCallbackStub packet_cb_;
   WebRtcRTPHeader rtp_header_;
   AudioFrame input_frame_;
@@ -286,18 +285,11 @@ class AudioCodingModuleMtTest : public AudioCodingModuleTest {
 
   AudioCodingModuleMtTest()
       : AudioCodingModuleTest(),
-        send_thread_(ThreadWrapper::CreateThread(CbSendThread,
-                                                 this,
-                                                 kRealtimePriority,
-                                                 "send")),
-        insert_packet_thread_(ThreadWrapper::CreateThread(CbInsertPacketThread,
-                                                          this,
-                                                          kRealtimePriority,
-                                                          "insert_packet")),
-        pull_audio_thread_(ThreadWrapper::CreateThread(CbPullAudioThread,
-                                                       this,
-                                                       kRealtimePriority,
-                                                       "pull_audio")),
+        send_thread_(ThreadWrapper::CreateThread(CbSendThread, this, "send")),
+        insert_packet_thread_(ThreadWrapper::CreateThread(
+            CbInsertPacketThread, this, "insert_packet")),
+        pull_audio_thread_(ThreadWrapper::CreateThread(
+            CbPullAudioThread, this, "pull_audio")),
         test_complete_(EventWrapper::Create()),
         send_count_(0),
         insert_packet_count_(0),
@@ -308,20 +300,22 @@ class AudioCodingModuleMtTest : public AudioCodingModuleTest {
     config_.clock = fake_clock_.get();
   }
 
-  virtual void SetUp() OVERRIDE {
+  void SetUp() override {
     AudioCodingModuleTest::SetUp();
     CreateAcm();
     StartThreads();
   }
 
   void StartThreads() {
-    unsigned int thread_id = 0;
-    ASSERT_TRUE(send_thread_->Start(thread_id));
-    ASSERT_TRUE(insert_packet_thread_->Start(thread_id));
-    ASSERT_TRUE(pull_audio_thread_->Start(thread_id));
+    ASSERT_TRUE(send_thread_->Start());
+    send_thread_->SetPriority(kRealtimePriority);
+    ASSERT_TRUE(insert_packet_thread_->Start());
+    insert_packet_thread_->SetPriority(kRealtimePriority);
+    ASSERT_TRUE(pull_audio_thread_->Start());
+    pull_audio_thread_->SetPriority(kRealtimePriority);
   }
 
-  virtual void TearDown() OVERRIDE {
+  void TearDown() override {
     AudioCodingModuleTest::TearDown();
     pull_audio_thread_->Stop();
     send_thread_->Stop();
@@ -404,16 +398,16 @@ class AudioCodingModuleMtTest : public AudioCodingModuleTest {
     return true;
   }
 
-  scoped_ptr<ThreadWrapper> send_thread_;
-  scoped_ptr<ThreadWrapper> insert_packet_thread_;
-  scoped_ptr<ThreadWrapper> pull_audio_thread_;
-  const scoped_ptr<EventWrapper> test_complete_;
+  rtc::scoped_ptr<ThreadWrapper> send_thread_;
+  rtc::scoped_ptr<ThreadWrapper> insert_packet_thread_;
+  rtc::scoped_ptr<ThreadWrapper> pull_audio_thread_;
+  const rtc::scoped_ptr<EventWrapper> test_complete_;
   int send_count_;
   int insert_packet_count_;
   int pull_audio_count_ GUARDED_BY(crit_sect_);
-  const scoped_ptr<CriticalSectionWrapper> crit_sect_;
+  const rtc::scoped_ptr<CriticalSectionWrapper> crit_sect_;
   int64_t next_insert_packet_time_ms_ GUARDED_BY(crit_sect_);
-  scoped_ptr<SimulatedClock> fake_clock_;
+  rtc::scoped_ptr<SimulatedClock> fake_clock_;
 };
 
 TEST_F(AudioCodingModuleMtTest, DoTest) {
@@ -436,7 +430,7 @@ class AcmIsacMtTest : public AudioCodingModuleMtTest {
 
   ~AcmIsacMtTest() {}
 
-  virtual void SetUp() OVERRIDE {
+  void SetUp() override {
     AudioCodingModuleTest::SetUp();
     CreateAcm();
 
@@ -459,7 +453,7 @@ class AcmIsacMtTest : public AudioCodingModuleMtTest {
     StartThreads();
   }
 
-  virtual void RegisterCodec() OVERRIDE {
+  void RegisterCodec() override {
     static_assert(kSampleRateHz == 16000, "test designed for iSAC 16 kHz");
 
     // Register iSAC codec in ACM, effectively unregistering the PCM16B codec
@@ -469,7 +463,7 @@ class AcmIsacMtTest : public AudioCodingModuleMtTest {
         acm_->RegisterReceiveCodec(acm2::ACMCodecDB::kISAC, kPayloadType));
   }
 
-  virtual void InsertPacket() OVERRIDE {
+  void InsertPacket() override {
     int num_calls = packet_cb_.num_calls();  // Store locally for thread safety.
     if (num_calls > last_packet_number_) {
       // Get the new payload out from the callback handler.
@@ -486,14 +480,14 @@ class AcmIsacMtTest : public AudioCodingModuleMtTest {
         &last_payload_vec_[0], last_payload_vec_.size(), rtp_header_));
   }
 
-  virtual void InsertAudio() OVERRIDE {
+  void InsertAudio() override {
     memcpy(input_frame_.data_, audio_loop_.GetNextBlock(), kNumSamples10ms);
     AudioCodingModuleTest::InsertAudio();
   }
 
   // This method is the same as AudioCodingModuleMtTest::TestDone(), but here
   // it is using the constants defined in this class (i.e., shorter test run).
-  virtual bool TestDone() OVERRIDE {
+  bool TestDone() override {
     if (packet_cb_.num_calls() > kNumPackets) {
       CriticalSectionScoped lock(crit_sect_.get());
       if (pull_audio_count_ > kNumPullCalls) {
@@ -513,6 +507,10 @@ TEST_F(AcmIsacMtTest, DoTest) {
   EXPECT_EQ(kEventSignaled, RunTest());
 }
 
+// Disabling all of these tests on iOS for now.
+// See https://code.google.com/p/webrtc/issues/detail?id=4768 for details.
+#if !defined(WEBRTC_IOS)
+
 class AcmReceiverBitExactness : public ::testing::Test {
  public:
   static std::string PlatformChecksum(std::string win64,
@@ -531,7 +529,7 @@ class AcmReceiverBitExactness : public ::testing::Test {
   void Run(int output_freq_hz, const std::string& checksum_ref) {
     const std::string input_file_name =
         webrtc::test::ResourcePath("audio_coding/neteq_universal_new", "rtp");
-    scoped_ptr<test::RtpFileSource> packet_source(
+    rtc::scoped_ptr<test::RtpFileSource> packet_source(
         test::RtpFileSource::Create(input_file_name));
 #ifdef WEBRTC_ANDROID
     // Filter out iLBC and iSAC-swb since they are not supported on Android.
@@ -561,7 +559,7 @@ class AcmReceiverBitExactness : public ::testing::Test {
 };
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_8kHzOutput DISABLED_8kHzOutput
 #else
 #define MAYBE_8kHzOutput 8kHzOutput
@@ -569,12 +567,12 @@ class AcmReceiverBitExactness : public ::testing::Test {
 TEST_F(AcmReceiverBitExactness, MAYBE_8kHzOutput) {
   Run(8000,
       PlatformChecksum("dcee98c623b147ebe1b40dd30efa896e",
-                       "6ac89c7145072c26bfeba602cd661afb",
+                       "adc92e173f908f93b96ba5844209815a",
                        "908002dc01fc4eb1d2be24eb1d3f354b"));
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_16kHzOutput DISABLED_16kHzOutput
 #else
 #define MAYBE_16kHzOutput 16kHzOutput
@@ -582,12 +580,12 @@ TEST_F(AcmReceiverBitExactness, MAYBE_8kHzOutput) {
 TEST_F(AcmReceiverBitExactness, MAYBE_16kHzOutput) {
   Run(16000,
       PlatformChecksum("f790e7a8cce4e2c8b7bb5e0e4c5dac0d",
-                       "3e888eb04f57db2c6ef952fe64f17fe6",
+                       "8cffa6abcb3e18e33b9d857666dff66a",
                        "a909560b5ca49fa472b17b7b277195e9"));
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_32kHzOutput DISABLED_32kHzOutput
 #else
 #define MAYBE_32kHzOutput 32kHzOutput
@@ -595,12 +593,12 @@ TEST_F(AcmReceiverBitExactness, MAYBE_16kHzOutput) {
 TEST_F(AcmReceiverBitExactness, MAYBE_32kHzOutput) {
   Run(32000,
       PlatformChecksum("306e0d990ee6e92de3fbecc0123ece37",
-                       "aeca37e963310f5b6552b7edea23c2f1",
+                       "3e126fe894720c3f85edadcc91964ba5",
                        "441aab4b347fb3db4e9244337aca8d8e"));
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_48kHzOutput DISABLED_48kHzOutput
 #else
 #define MAYBE_48kHzOutput 48kHzOutput
@@ -608,7 +606,7 @@ TEST_F(AcmReceiverBitExactness, MAYBE_32kHzOutput) {
 TEST_F(AcmReceiverBitExactness, MAYBE_48kHzOutput) {
   Run(48000,
       PlatformChecksum("aa7c232f63a67b2a72703593bdd172e0",
-                       "76b9e99e0a3998aa28355e7a2bd836f7",
+                       "0155665e93067c4e89256b944dd11999",
                        "4ee2730fa1daae755e8a8fd3abd779ec"));
 }
 
@@ -708,7 +706,7 @@ class AcmSenderBitExactness : public ::testing::Test,
   // Returns a pointer to the next packet. Returns NULL if the source is
   // depleted (i.e., the test duration is exceeded), or if an error occurred.
   // Inherited from test::PacketSource.
-  virtual test::Packet* NextPacket() OVERRIDE {
+  test::Packet* NextPacket() override {
     // Get the next packet from AcmSendTest. Ownership of |packet| is
     // transferred to this method.
     test::Packet* packet = send_test_->NextPacket();
@@ -755,8 +753,8 @@ class AcmSenderBitExactness : public ::testing::Test,
                                   codec_frame_size_rtp_timestamps));
   }
 
-  scoped_ptr<test::AcmSendTest> send_test_;
-  scoped_ptr<test::InputAudioFile> audio_source_;
+  rtc::scoped_ptr<test::AcmSendTest> send_test_;
+  rtc::scoped_ptr<test::InputAudioFile> audio_source_;
   uint32_t frame_size_rtp_timestamps_;
   int packet_count_;
   uint8_t payload_type_;
@@ -766,7 +764,7 @@ class AcmSenderBitExactness : public ::testing::Test,
 };
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_IsacWb30ms DISABLED_IsacWb30ms
 #else
 #define MAYBE_IsacWb30ms IsacWb30ms
@@ -786,7 +784,7 @@ TEST_F(AcmSenderBitExactness, MAYBE_IsacWb30ms) {
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_IsacWb60ms DISABLED_IsacWb60ms
 #else
 #define MAYBE_IsacWb60ms IsacWb60ms
@@ -809,15 +807,14 @@ TEST_F(AcmSenderBitExactness, DISABLED_ON_ANDROID(IsacSwb30ms)) {
   ASSERT_NO_FATAL_FAILURE(
       SetUpTest(acm2::ACMCodecDB::kISACSWB, 1, 104, 960, 960));
   Run(AcmReceiverBitExactness::PlatformChecksum(
-          "98d960600eb4ddb3fcbe11f5057ddfd7",
+          "2b3c387d06f00b7b7aad4c9be56fb83d",
           "",
-          "2f6dfe142f735f1d96f6bd86d2526f42"),
+          "5683b58da0fbf2063c7adc2e6bfb3fb8"),
       AcmReceiverBitExactness::PlatformChecksum(
-          "cc9d2d86a71d6f99f97680a5c27e2762",
+          "bcc2041e7744c7ebd9f701866856849c",
           "",
-          "7b214fc3a5e33d68bf30e77969371f31"),
-      33,
-      test::AcmReceiveTest::kMonoOutput);
+          "ce86106a93419aefb063097108ec94ab"),
+      33, test::AcmReceiveTest::kMonoOutput);
 }
 
 TEST_F(AcmSenderBitExactness, Pcm16_8000khz_10ms) {
@@ -951,7 +948,7 @@ TEST_F(AcmSenderBitExactness, DISABLED_ON_ANDROID(G722_stereo_20ms)) {
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_Opus_stereo_20ms DISABLED_Opus_stereo_20ms
 #else
 #define MAYBE_Opus_stereo_20ms Opus_stereo_20ms
@@ -969,5 +966,7 @@ TEST_F(AcmSenderBitExactness, MAYBE_Opus_stereo_20ms) {
       50,
       test::AcmReceiveTest::kStereoOutput);
 }
+
+#endif
 
 }  // namespace webrtc

@@ -17,11 +17,11 @@ namespace {
 // Callback Function to add 3 to every sample in the signal.
 class PlusThreeBlockerCallback : public webrtc::BlockerCallback {
  public:
-  virtual void ProcessBlock(const float* const* input,
-                            int num_frames,
-                            int num_input_channels,
-                            int num_output_channels,
-                            float* const* output) OVERRIDE {
+  void ProcessBlock(const float* const* input,
+                    int num_frames,
+                    int num_input_channels,
+                    int num_output_channels,
+                    float* const* output) override {
     for (int i = 0; i < num_output_channels; ++i) {
       for (int j = 0; j < num_frames; ++j) {
         output[i][j] = input[i][j] + 3;
@@ -33,11 +33,11 @@ class PlusThreeBlockerCallback : public webrtc::BlockerCallback {
 // No-op Callback Function.
 class CopyBlockerCallback : public webrtc::BlockerCallback {
  public:
-  virtual void ProcessBlock(const float* const* input,
-                            int num_frames,
-                            int num_input_channels,
-                            int num_output_channels,
-                            float* const* output) OVERRIDE {
+  void ProcessBlock(const float* const* input,
+                    int num_frames,
+                    int num_input_channels,
+                    int num_output_channels,
+                    float* const* output) override {
     for (int i = 0; i < num_output_channels; ++i) {
       for (int j = 0; j < num_frames; ++j) {
         output[i][j] = input[i][j];
@@ -132,13 +132,15 @@ TEST_F(BlockerTest, TestBlockerMutuallyPrimeChunkandBlockSize) {
       {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
       {2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
       {3, 3, 3, 3, 3, 3, 3, 3, 3, 3}};
-  const ChannelBuffer<float> input_cb(kInput[0], kNumFrames, kNumInputChannels);
+  ChannelBuffer<float> input_cb(kNumFrames, kNumInputChannels);
+  input_cb.SetDataForTesting(kInput[0], sizeof(kInput) / sizeof(**kInput));
 
   const float kExpectedOutput[kNumInputChannels][kNumFrames] = {
       {6, 6, 12, 20, 20, 20, 20, 20, 20, 20},
       {6, 6, 12, 28, 28, 28, 28, 28, 28, 28}};
-  const ChannelBuffer<float> expected_output_cb(
-      kExpectedOutput[0], kNumFrames, kNumInputChannels);
+  ChannelBuffer<float> expected_output_cb(kNumFrames, kNumInputChannels);
+  expected_output_cb.SetDataForTesting(
+      kExpectedOutput[0], sizeof(kExpectedOutput) / sizeof(**kExpectedOutput));
 
   const float kWindow[kBlockSize] = {2.f, 2.f, 2.f, 2.f};
 
@@ -183,13 +185,15 @@ TEST_F(BlockerTest, TestBlockerMutuallyPrimeShiftAndBlockSize) {
       {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
       {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
       {3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}};
-  const ChannelBuffer<float> input_cb(kInput[0], kNumFrames, kNumInputChannels);
+  ChannelBuffer<float> input_cb(kNumFrames, kNumInputChannels);
+  input_cb.SetDataForTesting(kInput[0], sizeof(kInput) / sizeof(**kInput));
 
   const float kExpectedOutput[kNumOutputChannels][kNumFrames] = {
       {6, 10, 10, 20, 10, 10, 20, 10, 10, 20, 10, 10},
       {6, 14, 14, 28, 14, 14, 28, 14, 14, 28, 14, 14}};
-  const ChannelBuffer<float> expected_output_cb(
-      kExpectedOutput[0], kNumFrames, kNumOutputChannels);
+  ChannelBuffer<float> expected_output_cb(kNumFrames, kNumOutputChannels);
+  expected_output_cb.SetDataForTesting(
+      kExpectedOutput[0], sizeof(kExpectedOutput) / sizeof(**kExpectedOutput));
 
   const float kWindow[kBlockSize] = {2.f, 2.f, 2.f, 2.f};
 
@@ -234,13 +238,15 @@ TEST_F(BlockerTest, TestBlockerNoOverlap) {
       {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
       {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
       {3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}};
-  const ChannelBuffer<float> input_cb(kInput[0], kNumFrames, kNumInputChannels);
+  ChannelBuffer<float> input_cb(kNumFrames, kNumInputChannels);
+  input_cb.SetDataForTesting(kInput[0], sizeof(kInput) / sizeof(**kInput));
 
   const float kExpectedOutput[kNumOutputChannels][kNumFrames] = {
       {10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
       {14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14}};
-  const ChannelBuffer<float> expected_output_cb(
-      kExpectedOutput[0], kNumFrames, kNumOutputChannels);
+  ChannelBuffer<float> expected_output_cb(kNumFrames, kNumOutputChannels);
+  expected_output_cb.SetDataForTesting(
+      kExpectedOutput[0], sizeof(kExpectedOutput) / sizeof(**kExpectedOutput));
 
   const float kWindow[kBlockSize] = {2.f, 2.f, 2.f, 2.f};
 
@@ -292,14 +298,15 @@ TEST_F(BlockerTest, InitialDelaysAreMinimum) {
       input[i][j] = i + 1;
     }
   }
-  const ChannelBuffer<float> input_cb(input[0], kNumFrames, kNumInputChannels);
+  ChannelBuffer<float> input_cb(kNumFrames, kNumInputChannels);
+  input_cb.SetDataForTesting(input[0], sizeof(input) / sizeof(**input));
 
   ChannelBuffer<float> output_cb(kNumFrames, kNumOutputChannels);
 
   CopyBlockerCallback callback;
 
   for (size_t i = 0; i < (sizeof(kChunkSize) / sizeof(*kChunkSize)); ++i) {
-    scoped_ptr<float[]> window(new float[kBlockSize[i]]);
+    rtc::scoped_ptr<float[]> window(new float[kBlockSize[i]]);
     for (int j = 0; j < kBlockSize[i]; ++j) {
       window[j] = 1.f;
     }

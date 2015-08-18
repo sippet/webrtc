@@ -7,6 +7,73 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 {
+  'targets': [
+    {
+      'target_name': 'audioproc_test_utils',
+      'type': 'static_library',
+      'dependencies': [
+        '<(webrtc_root)/base/base.gyp:rtc_base_approved',
+        '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
+      ],
+      'sources': [
+        'test/test_utils.cc',
+        'test/test_utils.h',
+      ],
+    },
+    {
+      'target_name': 'transient_suppression_test',
+      'type': 'executable',
+      'dependencies': [
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
+        '<(webrtc_root)/test/test.gyp:test_support',
+        '<(webrtc_root)/modules/modules.gyp:audio_processing',
+      ],
+      'sources': [
+        'transient/transient_suppression_test.cc',
+        'transient/file_utils.cc',
+        'transient/file_utils.h',
+      ],
+    }, # transient_suppression_test
+    {
+      'target_name': 'click_annotate',
+      'type': 'executable',
+      'dependencies': [
+        '<(webrtc_root)/modules/modules.gyp:audio_processing',
+      ],
+      'sources': [
+        'transient/click_annotate.cc',
+        'transient/file_utils.cc',
+        'transient/file_utils.h',
+      ],
+    },  # click_annotate
+    {
+      'target_name': 'nonlinear_beamformer_test',
+      'type': 'executable',
+      'dependencies': [
+        'audioproc_test_utils',
+        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
+        '<(webrtc_root)/modules/modules.gyp:audio_processing',
+      ],
+      'sources': [
+        'beamformer/nonlinear_beamformer_test.cc',
+      ],
+    }, # nonlinear_beamformer_test
+    {
+      'target_name': 'intelligibility_proc',
+      'type': 'executable',
+      'dependencies': [
+        'audioproc_test_utils',
+        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(webrtc_root)/modules/modules.gyp:audio_processing',
+        '<(webrtc_root)/test/test.gyp:test_support',
+      ],
+      'sources': [
+        'intelligibility/test/intelligibility_proc.cc',
+      ],
+    }, # intelligibility_proc
+  ],
   'conditions': [
     ['enable_protobuf==1', {
       'targets': [
@@ -24,13 +91,27 @@
           'includes': [ '../../build/protoc.gypi', ],
         },
         {
+          'target_name': 'audioproc_protobuf_utils',
+          'type': 'static_library',
+          'dependencies': [
+            'audioproc_debug_proto',
+          ],
+          'sources': [
+            'test/protobuf_utils.cc',
+            'test/protobuf_utils.h',
+          ],
+        },
+        {
           'target_name': 'audioproc',
           'type': 'executable',
           'dependencies': [
             'audio_processing',
             'audioproc_debug_proto',
+            'audioproc_test_utils',
+            'audioproc_protobuf_utils',
             '<(DEPTH)/testing/gtest.gyp:gtest',
             '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
+            '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers_default',
             '<(webrtc_root)/test/test.gyp:test_support',
           ],
           'sources': [ 'test/process_test.cc', ],
@@ -41,6 +122,10 @@
           'dependencies': [
             'audio_processing',
             'audioproc_debug_proto',
+            'audioproc_test_utils',
+            'audioproc_protobuf_utils',
+            '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers_default',
+            '<(webrtc_root)/test/test.gyp:test_support',
             '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
           ],
           'sources': [ 'test/audioproc_float.cc', ],
@@ -50,56 +135,14 @@
           'type': 'executable',
           'dependencies': [
             'audioproc_debug_proto',
+            'audioproc_test_utils',
+            'audioproc_protobuf_utils',
             '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
             '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
             '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
           ],
           'sources': [ 'test/unpack.cc', ],
         },
-        {
-          'target_name': 'transient_suppression_test',
-          'type': 'executable',
-          'dependencies': [
-            '<(DEPTH)/testing/gtest.gyp:gtest',
-            '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
-            '<(webrtc_root)/test/test.gyp:test_support',
-            '<(webrtc_root)/modules/modules.gyp:audio_processing',
-          ],
-          'sources': [
-            'transient/transient_suppression_test.cc',
-            'transient/file_utils.cc',
-            'transient/file_utils.h',
-          ],
-        }, # transient_suppression_test
-        {
-          'target_name': 'click_annotate',
-          'type': 'executable',
-          'dependencies': [
-            '<(webrtc_root)/modules/modules.gyp:audio_processing',
-          ],
-          'sources': [
-            'transient/click_annotate.cc',
-            'transient/file_utils.cc',
-            'transient/file_utils.h',
-          ],
-        },  # click_annotate
-      ],
-    }],
-    ['rtc_use_openmax_dl==1', {
-      'targets': [
-        {
-          'target_name': 'beamformer_test',
-          'type': 'executable',
-          'dependencies': [
-            '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
-            '<(webrtc_root)/modules/modules.gyp:audio_processing',
-          ],
-          'sources': [
-            'beamformer/beamformer_test.cc',
-            'beamformer/pcm_utils.cc',
-            'beamformer/pcm_utils.h',
-          ],
-        }, # beamformer_test
       ],
     }],
   ],

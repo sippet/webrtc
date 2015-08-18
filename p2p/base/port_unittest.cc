@@ -9,7 +9,6 @@
  */
 
 #include "webrtc/p2p/base/basicpacketsocketfactory.h"
-#include "webrtc/p2p/base/portproxy.h"
 #include "webrtc/p2p/base/relayport.h"
 #include "webrtc/p2p/base/stunport.h"
 #include "webrtc/p2p/base/tcpport.h"
@@ -48,8 +47,8 @@ using namespace cricket;
 static const int kTimeout = 1000;
 static const SocketAddress kLocalAddr1("192.168.1.2", 0);
 static const SocketAddress kLocalAddr2("192.168.1.3", 0);
-static const SocketAddress kNatAddr1("77.77.77.77", rtc::NAT_SERVER_PORT);
-static const SocketAddress kNatAddr2("88.88.88.88", rtc::NAT_SERVER_PORT);
+static const SocketAddress kNatAddr1("77.77.77.77", rtc::NAT_SERVER_UDP_PORT);
+static const SocketAddress kNatAddr2("88.88.88.88", rtc::NAT_SERVER_UDP_PORT);
 static const SocketAddress kStunAddr("99.99.99.1", STUN_SERVER_PORT);
 static const SocketAddress kRelayUdpIntAddr("99.99.99.2", 5000);
 static const SocketAddress kRelayUdpExtAddr("99.99.99.3", 5001);
@@ -74,6 +73,8 @@ static const int STUN_ERROR_SERVER_ERROR_AS_GICE =
 
 static const int kTiebreaker1 = 11111;
 static const int kTiebreaker2 = 22222;
+
+static const char* data = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
 
 static Candidate GetCandidate(Port* port) {
   assert(port->Candidates().size() == 1);
@@ -230,6 +231,7 @@ class TestChannel : public sigslot::has_slots<> {
     conn_->set_use_candidate_attr(remote_ice_mode == ICEMODE_FULL);
     conn_->SignalStateChange.connect(
         this, &TestChannel::OnConnectionStateChange);
+    conn_->SignalDestroyed.connect(this, &TestChannel::OnDestroyed);
   }
   void OnConnectionStateChange(Connection* conn) {
     if (conn->write_state() == Connection::STATE_WRITABLE) {
@@ -242,6 +244,7 @@ class TestChannel : public sigslot::has_slots<> {
     Candidate c = GetCandidate(dst_);
     c.set_address(remote_address_);
     conn_ = src_->CreateConnection(c, Port::ORIGIN_MESSAGE);
+    conn_->SignalDestroyed.connect(this, &TestChannel::OnDestroyed);
     src_->SendBindingResponse(remote_request_.get(), remote_address_);
     remote_request_.reset();
   }
@@ -252,8 +255,9 @@ class TestChannel : public sigslot::has_slots<> {
     conn_->Ping(now);
   }
   void Stop() {
-    conn_->SignalDestroyed.connect(this, &TestChannel::OnDestroyed);
-    conn_->Destroy();
+    if (conn_) {
+      conn_->Destroy();
+    }
   }
 
   void OnPortComplete(Port* port) {
@@ -261,6 +265,11 @@ class TestChannel : public sigslot::has_slots<> {
   }
   void SetIceMode(IceMode ice_mode) {
     ice_mode_ = ice_mode;
+  }
+
+  int SendData(const char* data, size_t len) {
+    rtc::PacketOptions options;
+    return conn_->Send(data, len, options);
   }
 
   void OnUnknownAddress(PortInterface* port, const SocketAddress& addr,
@@ -295,13 +304,20 @@ class TestChannel : public sigslot::has_slots<> {
 
   void OnDestroyed(Connection* conn) {
     ASSERT_EQ(conn_, conn);
+    LOG(INFO) << "OnDestroy connection " << conn << " deleted";
     conn_ = NULL;
+    // When the connection is destroyed, also clear these fields so future
+    // connections are possible.
+    remote_request_.reset();
+    remote_address_.Clear();
   }
 
   void OnSrcPortDestroyed(PortInterface* port) {
     Port* destroyed_src = src_.release();
     ASSERT_EQ(destroyed_src, port);
   }
+
+  Port* src_port() { return src_.get(); }
 
   bool nominated() const { return nominated_; }
 
@@ -327,15 +343,19 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
         ss_scope_(ss_.get()),
         network_("unittest", "unittest", rtc::IPAddress(INADDR_ANY), 32),
         socket_factory_(rtc::Thread::Current()),
-        nat_factory1_(ss_.get(), kNatAddr1),
-        nat_factory2_(ss_.get(), kNatAddr2),
+        nat_factory1_(ss_.get(), kNatAddr1, SocketAddress()),
+        nat_factory2_(ss_.get(), kNatAddr2, SocketAddress()),
         nat_socket_factory1_(&nat_factory1_),
         nat_socket_factory2_(&nat_factory2_),
         stun_server_(TestStunServer::Create(main_, kStunAddr)),
         turn_server_(main_, kTurnUdpIntAddr, kTurnUdpExtAddr),
-        relay_server_(main_, kRelayUdpIntAddr, kRelayUdpExtAddr,
-                      kRelayTcpIntAddr, kRelayTcpExtAddr,
-                      kRelaySslTcpIntAddr, kRelaySslTcpExtAddr),
+        relay_server_(main_,
+                      kRelayUdpIntAddr,
+                      kRelayUdpExtAddr,
+                      kRelayTcpIntAddr,
+                      kRelayTcpExtAddr,
+                      kRelaySslTcpIntAddr,
+                      kRelaySslTcpExtAddr),
         username_(rtc::CreateRandomString(ICE_UFRAG_LENGTH)),
         password_(rtc::CreateRandomString(ICE_PWD_LENGTH)),
         ice_protocol_(cricket::ICEPROTO_GOOGLE),
@@ -405,7 +425,6 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
     TestConnectivity("ssltcp", port1, RelayName(rtype, proto), port2,
                      rtype == RELAY_GTURN, false, true, true);
   }
-
   // helpers for above functions
   UDPPort* CreateUdpPort(const SocketAddress& addr) {
     return CreateUdpPort(addr, &socket_factory_);
@@ -488,7 +507,7 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
   }
   rtc::NATServer* CreateNatServer(const SocketAddress& addr,
                                         rtc::NATType type) {
-    return new rtc::NATServer(type, ss_.get(), addr, ss_.get(), addr);
+    return new rtc::NATServer(type, ss_.get(), addr, addr, ss_.get(), addr);
   }
   static const char* StunName(NATType type) {
     switch (type) {
@@ -519,16 +538,125 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
 
   void TestCrossFamilyPorts(int type);
 
+  void ExpectPortsCanConnect(bool can_connect, Port* p1, Port* p2);
+
   // This does all the work and then deletes |port1| and |port2|.
   void TestConnectivity(const char* name1, Port* port1,
                         const char* name2, Port* port2,
                         bool accept, bool same_addr1,
                         bool same_addr2, bool possible);
 
+  // This connects the provided channels which have already started.  |ch1|
+  // should have its Connection created (either through CreateConnection() or
+  // TCP reconnecting mechanism before entering this function.
+  void ConnectStartedChannels(TestChannel* ch1, TestChannel* ch2) {
+    ASSERT_TRUE(ch1->conn());
+    EXPECT_TRUE_WAIT(ch1->conn()->connected(), kTimeout);  // for TCP connect
+    ch1->Ping();
+    WAIT(!ch2->remote_address().IsNil(), kTimeout);
+
+    // Send a ping from dst to src.
+    ch2->AcceptConnection();
+    ch2->Ping();
+    EXPECT_EQ_WAIT(Connection::STATE_WRITABLE, ch2->conn()->write_state(),
+                   kTimeout);
+  }
+
   // This connects and disconnects the provided channels in the same sequence as
   // TestConnectivity with all options set to |true|.  It does not delete either
   // channel.
-  void ConnectAndDisconnectChannels(TestChannel* ch1, TestChannel* ch2);
+  void StartConnectAndStopChannels(TestChannel* ch1, TestChannel* ch2) {
+    // Acquire addresses.
+    ch1->Start();
+    ch2->Start();
+
+    ch1->CreateConnection();
+    ConnectStartedChannels(ch1, ch2);
+
+    // Destroy the connections.
+    ch1->Stop();
+    ch2->Stop();
+  }
+
+  // This disconnects both end's Connection and make sure ch2 ready for new
+  // connection.
+  void DisconnectTcpTestChannels(TestChannel* ch1, TestChannel* ch2) {
+    ASSERT_TRUE(ss_->CloseTcpConnections(
+        static_cast<TCPConnection*>(ch1->conn())->socket()->GetLocalAddress(),
+        static_cast<TCPConnection*>(ch2->conn())->socket()->GetLocalAddress()));
+
+    // Wait for both OnClose are delivered.
+    EXPECT_TRUE_WAIT(!ch1->conn()->connected(), kTimeout);
+    EXPECT_TRUE_WAIT(!ch2->conn()->connected(), kTimeout);
+
+    // Destroy channel2 connection to get ready for new incoming TCPConnection.
+    ch2->conn()->Destroy();
+    EXPECT_TRUE_WAIT(ch2->conn() == NULL, kTimeout);
+  }
+
+  void TestTcpReconnect(bool ping_after_disconnected,
+                        bool send_after_disconnected) {
+    Port* port1 = CreateTcpPort(kLocalAddr1);
+    Port* port2 = CreateTcpPort(kLocalAddr2);
+
+    port1->set_component(cricket::ICE_CANDIDATE_COMPONENT_DEFAULT);
+    port2->set_component(cricket::ICE_CANDIDATE_COMPONENT_DEFAULT);
+
+    // Set up channels and ensure both ports will be deleted.
+    TestChannel ch1(port1, port2);
+    TestChannel ch2(port2, port1);
+    EXPECT_EQ(0, ch1.complete_count());
+    EXPECT_EQ(0, ch2.complete_count());
+
+    ch1.Start();
+    ch2.Start();
+    ASSERT_EQ_WAIT(1, ch1.complete_count(), kTimeout);
+    ASSERT_EQ_WAIT(1, ch2.complete_count(), kTimeout);
+
+    // Initial connecting the channel, create connection on channel1.
+    ch1.CreateConnection();
+    ConnectStartedChannels(&ch1, &ch2);
+
+    // Shorten the timeout period.
+    const int kTcpReconnectTimeout = kTimeout;
+    static_cast<TCPConnection*>(ch1.conn())
+        ->set_reconnection_timeout(kTcpReconnectTimeout);
+    static_cast<TCPConnection*>(ch2.conn())
+        ->set_reconnection_timeout(kTcpReconnectTimeout);
+
+    // Once connected, disconnect them.
+    DisconnectTcpTestChannels(&ch1, &ch2);
+
+    if (send_after_disconnected || ping_after_disconnected) {
+      if (send_after_disconnected) {
+        // First SendData after disconnect should fail but will trigger
+        // reconnect.
+        EXPECT_EQ(-1, ch1.SendData(data, static_cast<int>(strlen(data))));
+      }
+
+      if (ping_after_disconnected) {
+        // Ping should trigger reconnect.
+        ch1.Ping();
+      }
+
+      // Wait for channel's outgoing TCPConnection connected.
+      EXPECT_TRUE_WAIT(ch1.conn()->connected(), kTimeout);
+
+      // Verify that we could still connect channels.
+      ConnectStartedChannels(&ch1, &ch2);
+    } else {
+      EXPECT_EQ(ch1.conn()->write_state(), Connection::STATE_WRITABLE);
+      EXPECT_TRUE_WAIT(
+          ch1.conn()->write_state() == Connection::STATE_WRITE_TIMEOUT,
+          kTcpReconnectTimeout + kTimeout);
+    }
+
+    // Tear down and ensure that goes smoothly.
+    ch1.Stop();
+    ch2.Stop();
+    EXPECT_TRUE_WAIT(ch1.conn() == NULL, kTimeout);
+    EXPECT_TRUE_WAIT(ch2.conn() == NULL, kTimeout);
+  }
 
   void SetIceProtocolType(cricket::IceProtocolType protocol) {
     ice_protocol_ = protocol;
@@ -738,29 +866,6 @@ void PortTest::TestConnectivity(const char* name1, Port* port1,
   ch2.Stop();
   EXPECT_TRUE_WAIT(ch1.conn() == NULL, kTimeout);
   EXPECT_TRUE_WAIT(ch2.conn() == NULL, kTimeout);
-}
-
-void PortTest::ConnectAndDisconnectChannels(TestChannel* ch1,
-                                            TestChannel* ch2) {
-  // Acquire addresses.
-  ch1->Start();
-  ch2->Start();
-
-  // Send a ping from src to dst.
-  ch1->CreateConnection();
-  EXPECT_TRUE_WAIT(ch1->conn()->connected(), kTimeout);  // for TCP connect
-  ch1->Ping();
-  WAIT(!ch2->remote_address().IsNil(), kTimeout);
-
-  // Send a ping from dst to src.
-  ch2->AcceptConnection();
-  ch2->Ping();
-  EXPECT_EQ_WAIT(Connection::STATE_WRITABLE, ch2->conn()->write_state(),
-                 kTimeout);
-
-  // Destroy the connections.
-  ch1->Stop();
-  ch2->Stop();
 }
 
 class FakePacketSocketFactory : public rtc::PacketSocketFactory {
@@ -1039,6 +1144,18 @@ TEST_F(PortTest, TestTcpToTcp) {
   TestTcpToTcp();
 }
 
+TEST_F(PortTest, TestTcpReconnectOnSendPacket) {
+  TestTcpReconnect(false /* ping */, true /* send */);
+}
+
+TEST_F(PortTest, TestTcpReconnectOnPing) {
+  TestTcpReconnect(true /* ping */, false /* send */);
+}
+
+TEST_F(PortTest, TestTcpReconnectTimeout) {
+  TestTcpReconnect(false /* ping */, false /* send */);
+}
+
 /* TODO: Enable these once testrelayserver can accept external TCP.
 TEST_F(PortTest, TestTcpToTcpRelay) {
   TestTcpToRelay(PROTO_TCP);
@@ -1277,6 +1394,49 @@ TEST_F(PortTest, TestSkipCrossFamilyTcp) {
 
 TEST_F(PortTest, TestSkipCrossFamilyUdp) {
   TestCrossFamilyPorts(SOCK_DGRAM);
+}
+
+void PortTest::ExpectPortsCanConnect(bool can_connect, Port* p1, Port* p2) {
+  Connection* c = p1->CreateConnection(GetCandidate(p2),
+                                       Port::ORIGIN_MESSAGE);
+  if (can_connect) {
+    EXPECT_FALSE(NULL == c);
+    EXPECT_EQ(1U, p1->connections().size());
+  } else {
+    EXPECT_TRUE(NULL == c);
+    EXPECT_EQ(0U, p1->connections().size());
+  }
+}
+
+TEST_F(PortTest, TestUdpV6CrossTypePorts) {
+  FakePacketSocketFactory factory;
+  scoped_ptr<Port> ports[4];
+  SocketAddress addresses[4] = {SocketAddress("2001:db8::1", 0),
+                                SocketAddress("fe80::1", 0),
+                                SocketAddress("fe80::2", 0),
+                                SocketAddress("::1", 0)};
+  for (int i = 0; i < 4; i++) {
+    FakeAsyncPacketSocket *socket = new FakeAsyncPacketSocket();
+    factory.set_next_udp_socket(socket);
+    ports[i].reset(CreateUdpPort(addresses[i], &factory));
+    socket->set_state(AsyncPacketSocket::STATE_BINDING);
+    socket->SignalAddressReady(socket, addresses[i]);
+    ports[i]->PrepareAddress();
+  }
+
+  Port* standard = ports[0].get();
+  Port* link_local1 = ports[1].get();
+  Port* link_local2 = ports[2].get();
+  Port* localhost = ports[3].get();
+
+  ExpectPortsCanConnect(false, link_local1, standard);
+  ExpectPortsCanConnect(false, standard, link_local1);
+  ExpectPortsCanConnect(false, link_local1, localhost);
+  ExpectPortsCanConnect(false, localhost, link_local1);
+
+  ExpectPortsCanConnect(true, link_local1, link_local2);
+  ExpectPortsCanConnect(true, localhost, standard);
+  ExpectPortsCanConnect(true, standard, localhost);
 }
 
 // This test verifies DSCP value set through SetOption interface can be
@@ -2093,21 +2253,6 @@ TEST_F(PortTest, TestComputeCandidatePriority) {
   ASSERT_EQ(expected_priority_6bone, port->Candidates()[8].priority());
 }
 
-TEST_F(PortTest, TestPortProxyProperties) {
-  rtc::scoped_ptr<TestPort> port(
-      CreateTestPort(kLocalAddr1, "name", "pass"));
-  port->SetIceRole(cricket::ICEROLE_CONTROLLING);
-  port->SetIceTiebreaker(kTiebreaker1);
-
-  // Create a proxy port.
-  rtc::scoped_ptr<PortProxy> proxy(new PortProxy());
-  proxy->set_impl(port.get());
-  EXPECT_EQ(port->Type(), proxy->Type());
-  EXPECT_EQ(port->Network(), proxy->Network());
-  EXPECT_EQ(port->GetIceRole(), proxy->GetIceRole());
-  EXPECT_EQ(port->IceTiebreaker(), proxy->IceTiebreaker());
-}
-
 // In the case of shared socket, one port may be shared by local and stun.
 // Test that candidates with different types will have different foundation.
 TEST_F(PortTest, TestFoundation) {
@@ -2466,7 +2611,7 @@ TEST_F(PortTest, TestControllingNoTimeout) {
   TestChannel ch2(port2, port1);
 
   // Simulate a connection that succeeds, and then is destroyed.
-  ConnectAndDisconnectChannels(&ch1, &ch2);
+  StartConnectAndStopChannels(&ch1, &ch2);
 
   // After the connection is destroyed, the port should not be destroyed.
   rtc::Thread::Current()->ProcessMessages(kTimeout);
@@ -2498,7 +2643,7 @@ TEST_F(PortTest, TestControlledTimeout) {
   TestChannel ch2(port2, port1);
 
   // Simulate a connection that succeeds, and then is destroyed.
-  ConnectAndDisconnectChannels(&ch1, &ch2);
+  StartConnectAndStopChannels(&ch1, &ch2);
 
   // The controlled port should be destroyed after 10 milliseconds.
   EXPECT_TRUE_WAIT(destroyed(), kTimeout);

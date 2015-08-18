@@ -17,6 +17,7 @@
       'type': 'static_library',
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(webrtc_root)/common.gyp:webrtc_common',
         '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
       ],
       'sources': [
@@ -64,6 +65,8 @@
         'rtp_file_writer.h',
       ],
       'dependencies': [
+        '<(DEPTH)/webrtc/common.gyp:webrtc_common',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(webrtc_root)/modules/modules.gyp:rtp_rtcp',
       ],
     },
@@ -75,6 +78,19 @@
         'field_trial.h',
       ],
       'dependencies': [
+        '<(webrtc_root)/common.gyp:webrtc_common',
+        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
+      ],
+    },
+    {
+      'target_name': 'histogram',
+      'type': 'static_library',
+      'sources': [
+        'histogram.cc',
+        'histogram.h',
+      ],
+      'dependencies': [
+        '<(webrtc_root)/common.gyp:webrtc_common',
         '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
       ],
     },
@@ -86,9 +102,9 @@
       ],
       'dependencies': [
         'field_trial',
+        'histogram',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
-        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:metrics_default',
       ],
     },
     {
@@ -97,6 +113,7 @@
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/testing/gmock.gyp:gmock',
+        '<(webrtc_root)/common.gyp:gtest_prod',
         '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
       ],
       'sources': [
@@ -106,8 +123,8 @@
         'testsupport/frame_reader.h',
         'testsupport/frame_writer.cc',
         'testsupport/frame_writer.h',
-        'testsupport/gtest_prod_util.h',
         'testsupport/gtest_disable.h',
+        'testsupport/iosfileutils.mm',
         'testsupport/mock/mock_frame_reader.h',
         'testsupport/mock/mock_frame_writer.h',
         'testsupport/packet_reader.cc',
@@ -117,6 +134,13 @@
         'testsupport/trace_to_stderr.cc',
         'testsupport/trace_to_stderr.h',
       ],
+      'conditions': [
+        ['OS=="ios"', {
+          'xcode_settings': {
+            'CLANG_ENABLE_OBJC_ARC': 'YES',
+          },
+        }],
+      ],
     },
     {
       # Depend on this target when you want to have test_support but also the
@@ -125,11 +149,11 @@
       'type': 'static_library',
       'dependencies': [
         'field_trial',
+        'histogram',
         'test_support',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
-        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:metrics_default',
       ],
       'sources': [
         'run_all_unittests.cc',

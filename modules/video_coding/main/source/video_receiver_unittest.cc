@@ -11,13 +11,13 @@
 #include <vector>
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/video_coding/codecs/interface/mock/mock_video_codec_interface.h"
 #include "webrtc/modules/video_coding/main/interface/mock/mock_vcm_callbacks.h"
 #include "webrtc/modules/video_coding/main/interface/video_coding.h"
 #include "webrtc/modules/video_coding/main/source/video_coding_impl.h"
 #include "webrtc/modules/video_coding/main/test/test_util.h"
 #include "webrtc/system_wrappers/interface/clock.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 using ::testing::_;
 using ::testing::NiceMock;
@@ -34,10 +34,8 @@ class TestVideoReceiver : public ::testing::Test {
 
   virtual void SetUp() {
     receiver_.reset(new VideoReceiver(&clock_, &event_factory_));
-    EXPECT_EQ(0, receiver_->InitializeReceiver());
-    EXPECT_EQ(0,
-              receiver_->RegisterExternalDecoder(
-                  &decoder_, kUnusedPayloadType, true));
+    EXPECT_EQ(0, receiver_->RegisterExternalDecoder(&decoder_,
+                                                    kUnusedPayloadType, true));
     const size_t kMaxNackListSize = 250;
     const int kMaxPacketAgeToNack = 450;
     receiver_->SetNackSettings(kMaxNackListSize, kMaxPacketAgeToNack, 0);
@@ -79,7 +77,7 @@ class TestVideoReceiver : public ::testing::Test {
   NiceMock<MockVideoDecoder> decoder_;
   NiceMock<MockPacketRequestCallback> packet_request_callback_;
 
-  scoped_ptr<VideoReceiver> receiver_;
+  rtc::scoped_ptr<VideoReceiver> receiver_;
 };
 
 TEST_F(TestVideoReceiver, PaddingOnlyFrames) {

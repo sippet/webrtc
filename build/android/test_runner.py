@@ -25,7 +25,7 @@ CHROMIUM_BUILD_ANDROID_DIR = os.path.join(SRC_DIR, 'build', 'android')
 sys.path.insert(0, CHROMIUM_BUILD_ANDROID_DIR)
 
 
-import test_runner
+import test_runner  # pylint: disable=W0406
 from pylib.gtest import gtest_config
 from pylib.gtest import setup
 
@@ -37,6 +37,7 @@ def main():
     'common_video_unittests',
     'modules_tests',
     'modules_unittests',
+    'rtc_unittests',
     'system_wrappers_unittests',
     'test_support_unittests',
     'tools_unittests',
@@ -58,6 +59,7 @@ def main():
         'webrtc/common_video/common_video_unittests.isolate',
     'modules_tests': 'webrtc/modules/modules_tests.isolate',
     'modules_unittests': 'webrtc/modules/modules_unittests.isolate',
+    'rtc_unittests': 'webrtc/rtc_unittests.isolate',
     'system_wrappers_unittests':
         'webrtc/system_wrappers/system_wrappers_unittests.isolate',
     'test_support_unittests': 'webrtc/test/test_support_unittests.isolate',

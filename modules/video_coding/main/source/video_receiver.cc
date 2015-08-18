@@ -8,6 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "webrtc/base/checks.h"
 #include "webrtc/common_types.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 #include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
@@ -28,9 +29,8 @@ VideoReceiver::VideoReceiver(Clock* clock, EventFactory* event_factory)
     : clock_(clock),
       process_crit_sect_(CriticalSectionWrapper::CreateCriticalSection()),
       _receiveCritSect(CriticalSectionWrapper::CreateCriticalSection()),
-      _receiverInited(false),
       _timing(clock_),
-      _receiver(&_timing, clock_, event_factory, true),
+      _receiver(&_timing, clock_, event_factory),
       _decodedFrameCallback(_timing, clock_),
       _frameTypeCallback(NULL),
       _receiveStatsCallback(NULL),
@@ -46,7 +46,7 @@ VideoReceiver::VideoReceiver(Clock* clock, EventFactory* event_factory)
       _scheduleKeyRequest(false),
       max_nack_list_size_(0),
       pre_decode_image_callback_(NULL),
-      _codecDataBase(),
+      _codecDataBase(NULL),
       _receiveStatsTimer(1000, clock_),
       _retransmissionTimer(10, clock_),
       _keyRequestTimer(500, clock_) {
@@ -137,15 +137,20 @@ int32_t VideoReceiver::Process() {
       callback_registered = _packetRequestCallback != NULL;
     }
     if (callback_registered && length > 0) {
-      std::vector<uint16_t> nackList(length);
-      const int32_t ret = NackList(&nackList[0], &length);
-      if (ret != VCM_OK && returnValue == VCM_OK) {
-        returnValue = ret;
+      // Collect sequence numbers from the default receiver.
+      bool request_key_frame = false;
+      std::vector<uint16_t> nackList = _receiver.NackList(&request_key_frame);
+      int32_t ret = VCM_OK;
+      if (request_key_frame) {
+        ret = RequestKeyFrame();
+        if (ret != VCM_OK && returnValue == VCM_OK) {
+          returnValue = ret;
+        }
       }
-      if (ret == VCM_OK && length > 0) {
+      if (ret == VCM_OK && !nackList.empty()) {
         CriticalSectionScoped cs(process_crit_sect_.get());
         if (_packetRequestCallback != NULL) {
-          _packetRequestCallback->ResendPackets(&nackList[0], length);
+          _packetRequestCallback->ResendPackets(&nackList[0], nackList.size());
         }
       }
     }
@@ -183,15 +188,9 @@ int32_t VideoReceiver::SetVideoProtection(VCMVideoProtection videoProtection,
   // By default, do not decode with errors.
   _receiver.SetDecodeErrorMode(kNoErrors);
   switch (videoProtection) {
-    case kProtectionNack:
-    case kProtectionNackReceiver: {
-      CriticalSectionScoped cs(_receiveCritSect);
-      if (enable) {
-        // Enable NACK and always wait for retransmits.
-        _receiver.SetNackMode(kNack, -1, -1);
-      } else {
-        _receiver.SetNackMode(kNoNack, -1, -1);
-      }
+    case kProtectionNack: {
+      DCHECK(enable);
+      _receiver.SetNackMode(kNack, -1, -1);
       break;
     }
 
@@ -222,53 +221,19 @@ int32_t VideoReceiver::SetVideoProtection(VCMVideoProtection videoProtection,
 
     case kProtectionNackFEC: {
       CriticalSectionScoped cs(_receiveCritSect);
-      if (enable) {
-        // Enable hybrid NACK/FEC. Always wait for retransmissions
-        // and don't add extra delay when RTT is above
-        // kLowRttNackMs.
-        _receiver.SetNackMode(kNack, media_optimization::kLowRttNackMs, -1);
-        _receiver.SetDecodeErrorMode(kNoErrors);
-        _receiver.SetDecodeErrorMode(kNoErrors);
-      } else {
-        _receiver.SetNackMode(kNoNack, -1, -1);
-      }
+      DCHECK(enable);
+      _receiver.SetNackMode(kNack, media_optimization::kLowRttNackMs, -1);
+      _receiver.SetDecodeErrorMode(kNoErrors);
       break;
     }
-    case kProtectionNackSender:
     case kProtectionFEC:
-    case kProtectionPeriodicKeyFrames:
-      // Ignore encoder modes.
-      return VCM_OK;
+    case kProtectionNone:
+      // No receiver-side protection.
+      DCHECK(enable);
+      _receiver.SetNackMode(kNoNack, -1, -1);
+      _receiver.SetDecodeErrorMode(kWithErrors);
+      break;
   }
-  return VCM_OK;
-}
-
-// Initialize receiver, resets codec database etc
-int32_t VideoReceiver::InitializeReceiver() {
-  int32_t ret = _receiver.Initialize();
-  if (ret < 0) {
-    return ret;
-  }
-
-  {
-    CriticalSectionScoped receive_cs(_receiveCritSect);
-    _codecDataBase.ResetReceiver();
-    _timing.Reset();
-    _receiverInited = true;
-  }
-
-  {
-    CriticalSectionScoped process_cs(process_crit_sect_.get());
-    _decoder = NULL;
-    _decodedFrameCallback.SetUserReceiveCallback(NULL);
-    _frameTypeCallback = NULL;
-    _receiveStatsCallback = NULL;
-    _decoderTimingCallback = NULL;
-    _packetRequestCallback = NULL;
-    _keyRequestMode = kKeyOnError;
-    _scheduleKeyRequest = false;
-  }
-
   return VCM_OK;
 }
 
@@ -335,6 +300,10 @@ int VideoReceiver::RegisterRenderBufferSizeCallback(
   return VCM_OK;
 }
 
+void VideoReceiver::TriggerDecoderShutdown() {
+  _receiver.TriggerDecoderShutdown();
+}
+
 // Decode next frame, blocking.
 // Should be called as often as possible to get the most out of the decoder.
 int32_t VideoReceiver::Decode(uint16_t maxWaitTimeMs) {
@@ -342,12 +311,6 @@ int32_t VideoReceiver::Decode(uint16_t maxWaitTimeMs) {
   bool supports_render_scheduling;
   {
     CriticalSectionScoped cs(_receiveCritSect);
-    if (!_receiverInited) {
-      return VCM_UNINITIALIZED;
-    }
-    if (!_codecDataBase.DecoderRegistered()) {
-      return VCM_NO_CODEC_REGISTERED;
-    }
     supports_render_scheduling = _codecDataBase.SupportsRenderScheduling();
   }
 
@@ -365,7 +328,7 @@ int32_t VideoReceiver::Decode(uint16_t maxWaitTimeMs) {
 
     if (pre_decode_image_callback_) {
       EncodedImage encoded_image(frame->EncodedImage());
-      pre_decode_image_callback_->Encoded(encoded_image);
+      pre_decode_image_callback_->Encoded(encoded_image, NULL, NULL);
     }
 
 #ifdef DEBUG_DECODER_BIT_STREAM
@@ -467,6 +430,7 @@ int32_t VideoReceiver::Decode(const VCMEncodedFrame& frame) {
       case kKeyOnLoss: {
         request_key_frame = true;
         ret = VCM_OK;
+        break;
       }
       default:
         break;
@@ -486,7 +450,7 @@ int32_t VideoReceiver::ResetDecoder() {
   {
     CriticalSectionScoped cs(_receiveCritSect);
     if (_decoder != NULL) {
-      _receiver.Initialize();
+      _receiver.Reset();
       _timing.Reset();
       reset_key_request = true;
       _decoder->Reset();
@@ -576,22 +540,6 @@ int32_t VideoReceiver::SetRenderDelay(uint32_t timeMS) {
 
 // Current video delay
 int32_t VideoReceiver::Delay() const { return _timing.TargetVideoDelay(); }
-
-// Nack list
-int32_t VideoReceiver::NackList(uint16_t* nackList, uint16_t* size) {
-  VCMNackStatus nackStatus = kNackOk;
-  uint16_t nack_list_length = 0;
-  // Collect sequence numbers from the default receiver
-  // if in normal nack mode.
-  if (_receiver.NackMode() != kNoNack) {
-    nackStatus = _receiver.NackList(nackList, *size, &nack_list_length);
-  }
-  *size = nack_list_length;
-  if (nackStatus == kNackKeyFrameRequest) {
-      return RequestKeyFrame();
-  }
-  return VCM_OK;
-}
 
 uint32_t VideoReceiver::DiscardedPackets() const {
   return _receiver.DiscardedPackets();

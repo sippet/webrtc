@@ -9,10 +9,10 @@
 import("../../build/webrtc.gni")
 
 # Note this target is missing an implementation for the video capture.
-# Targets must link with either 'video_capture_impl' or
+# Targets must link with either 'video_capture' or
 # 'video_capture_internal_impl' depending on whether they want to
 # use the internal capturer.
-source_set("video_capture") {
+source_set("video_capture_module") {
   sources = [
     "device_info_impl.cc",
     "device_info_impl.h",
@@ -27,6 +27,7 @@ source_set("video_capture") {
   ]
 
   deps = [
+    "../..:webrtc_common",
     "../../common_video",
     "../../system_wrappers",
     "../utility",
@@ -42,14 +43,14 @@ source_set("video_capture") {
   }
 }
 
-source_set("video_capture_impl") {
+source_set("video_capture") {
   sources = [
     "external/device_info_external.cc",
     "external/video_capture_external.cc",
   ]
 
   deps = [
-    ":video_capture",
+    ":video_capture_module",
     "../../system_wrappers",
   ]
 
@@ -76,7 +77,7 @@ if (!build_with_chromium) {
 
   source_set("video_capture_internal_impl") {
     deps = [
-      ":video_capture",
+      ":video_capture_module",
       "../../system_wrappers",
     ]
 
@@ -87,6 +88,7 @@ if (!build_with_chromium) {
         "linux/video_capture_linux.cc",
         "linux/video_capture_linux.h",
       ]
+      deps += [ "../..:webrtc_common" ]
     }
     if (is_mac) {
       sources = [
@@ -126,7 +128,7 @@ if (!build_with_chromium) {
 
       libs = [ "Strmiids.lib" ]
 
-      deps += [ "//third_party/winsdk_samples"]
+      deps += [ "//third_party/winsdk_samples" ]
     }
     if (is_android) {
       sources = [
@@ -136,10 +138,12 @@ if (!build_with_chromium) {
         "android/video_capture_android.h",
       ]
 
-      deps += [
-        "//third_party/icu:icuuc",
-        "//third_party/jsoncpp",
-      ]
+      if (rtc_build_json) {
+        deps += [ "//third_party/jsoncpp" ]
+      }
+      if (rtc_build_icu) {
+        deps += [ "//third_party/icu:icuuc" ]
+      }
     }
     if (is_ios) {
       sources = [
@@ -155,6 +159,7 @@ if (!build_with_chromium) {
 
       cflags = [
         "-fobjc-arc",  # CLANG_ENABLE_OBJC_ARC = YES.
+
         # To avoid warnings for deprecated videoMinFrameDuration and
         # videoMaxFrameDuration properties in iOS 7.0.
         # See webrtc:3705 for more details.

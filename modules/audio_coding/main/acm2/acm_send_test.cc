@@ -61,7 +61,7 @@ bool AcmSendTest::RegisterCodec(int codec_type,
 
 Packet* AcmSendTest::NextPacket() {
   assert(codec_registered_);
-  if (filter_.test(payload_type_)) {
+  if (filter_.test(static_cast<size_t>(payload_type_))) {
     // This payload type should be filtered out. Since the payload type is the
     // same throughout the whole test run, no packet at all will be delivered.
     // We can just as well signal that the test is over by returning NULL.
@@ -79,7 +79,7 @@ Packet* AcmSendTest::NextPacket() {
     }
     int32_t encoded_bytes = acm_->Add10MsAudio(input_frame_);
     EXPECT_GE(encoded_bytes, 0);
-    input_frame_.timestamp_ += input_block_size_samples_;
+    input_frame_.timestamp_ += static_cast<uint32_t>(input_block_size_samples_);
     if (encoded_bytes > 0) {
       // Encoded packet received.
       return CreatePacket();
@@ -111,7 +111,7 @@ Packet* AcmSendTest::CreatePacket() {
   uint8_t* packet_memory = new uint8_t[allocated_bytes];
   // Populate the header bytes.
   packet_memory[0] = 0x80;
-  packet_memory[1] = payload_type_;
+  packet_memory[1] = static_cast<uint8_t>(payload_type_);
   packet_memory[2] = (sequence_number_ >> 8) & 0xFF;
   packet_memory[3] = (sequence_number_) & 0xFF;
   packet_memory[4] = (timestamp_ >> 24) & 0xFF;

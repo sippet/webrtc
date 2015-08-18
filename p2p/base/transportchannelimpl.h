@@ -52,11 +52,10 @@ class TransportChannelImpl : public TransportChannel {
   // SetRemoteIceMode must be implemented only by the ICE transport channels.
   virtual void SetRemoteIceMode(IceMode mode) = 0;
 
+  virtual void SetReceivingTimeout(int timeout_ms) = 0;
+
   // Begins the process of attempting to make a connection to the other client.
   virtual void Connect() = 0;
-
-  // Resets this channel back to the initial state (i.e., not connecting).
-  virtual void Reset() = 0;
 
   // Allows an individual channel to request signaling and be notified when it
   // is ready.  This is useful if the individual named channels have need to
@@ -102,7 +101,7 @@ class TransportChannelImpl : public TransportChannel {
   sigslot::signal1<TransportChannelImpl*> SignalConnectionRemoved;
 
  private:
-  DISALLOW_EVIL_CONSTRUCTORS(TransportChannelImpl);
+  DISALLOW_COPY_AND_ASSIGN(TransportChannelImpl);
 };
 
 }  // namespace cricket

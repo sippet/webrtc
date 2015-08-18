@@ -57,14 +57,14 @@ int GainControlImpl::ProcessRenderAudio(AudioBuffer* audio) {
     return apm_->kNoError;
   }
 
-  assert(audio->samples_per_split_channel() <= 160);
+  assert(audio->num_frames_per_band() <= 160);
 
   for (int i = 0; i < num_handles(); i++) {
     Handle* my_handle = static_cast<Handle*>(handle(i));
     int err = WebRtcAgc_AddFarend(
         my_handle,
         audio->mixed_low_pass_data(),
-        static_cast<int16_t>(audio->samples_per_split_channel()));
+        static_cast<int16_t>(audio->num_frames_per_band()));
 
     if (err != apm_->kNoError) {
       return GetHandleError(my_handle);
@@ -79,7 +79,7 @@ int GainControlImpl::AnalyzeCaptureAudio(AudioBuffer* audio) {
     return apm_->kNoError;
   }
 
-  assert(audio->samples_per_split_channel() <= 160);
+  assert(audio->num_frames_per_band() <= 160);
   assert(audio->num_channels() == num_handles());
 
   int err = apm_->kNoError;
@@ -92,7 +92,7 @@ int GainControlImpl::AnalyzeCaptureAudio(AudioBuffer* audio) {
           my_handle,
           audio->split_bands(i),
           audio->num_bands(),
-          static_cast<int16_t>(audio->samples_per_split_channel()));
+          static_cast<int16_t>(audio->num_frames_per_band()));
 
       if (err != apm_->kNoError) {
         return GetHandleError(my_handle);
@@ -108,7 +108,7 @@ int GainControlImpl::AnalyzeCaptureAudio(AudioBuffer* audio) {
           my_handle,
           audio->split_bands(i),
           audio->num_bands(),
-          static_cast<int16_t>(audio->samples_per_split_channel()),
+          static_cast<int16_t>(audio->num_frames_per_band()),
           analog_capture_level_,
           &capture_level_out);
 
@@ -133,7 +133,7 @@ int GainControlImpl::ProcessCaptureAudio(AudioBuffer* audio) {
     return apm_->kStreamParameterNotSetError;
   }
 
-  assert(audio->samples_per_split_channel() <= 160);
+  assert(audio->num_frames_per_band() <= 160);
   assert(audio->num_channels() == num_handles());
 
   stream_is_saturated_ = false;
@@ -146,7 +146,7 @@ int GainControlImpl::ProcessCaptureAudio(AudioBuffer* audio) {
         my_handle,
         audio->split_bands_const(i),
         audio->num_bands(),
-        static_cast<int16_t>(audio->samples_per_split_channel()),
+        static_cast<int16_t>(audio->num_frames_per_band()),
         audio->split_bands(i),
         capture_levels_[i],
         &capture_level_out,
@@ -179,6 +179,7 @@ int GainControlImpl::ProcessCaptureAudio(AudioBuffer* audio) {
 
 // TODO(ajm): ensure this is called under kAdaptiveAnalog.
 int GainControlImpl::set_stream_analog_level(int level) {
+  CriticalSectionScoped crit_scoped(crit_);
   was_analog_level_set_ = true;
   if (level < minimum_capture_level_ || level > maximum_capture_level_) {
     return apm_->kBadParameterError;
@@ -300,14 +301,7 @@ int GainControlImpl::Initialize() {
 }
 
 void* GainControlImpl::CreateHandle() const {
-  Handle* handle = NULL;
-  if (WebRtcAgc_Create(&handle) != apm_->kNoError) {
-    handle = NULL;
-  } else {
-    assert(handle != NULL);
-  }
-
-  return handle;
+  return WebRtcAgc_Create();
 }
 
 void GainControlImpl::DestroyHandle(void* handle) const {

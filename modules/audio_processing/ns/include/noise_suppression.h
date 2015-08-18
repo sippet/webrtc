@@ -20,20 +20,9 @@ extern "C" {
 #endif
 
 /*
- * This function creates an instance to the noise suppression structure
- *
- * Input:
- *      - NS_inst       : Pointer to noise suppression instance that should be
- *                        created
- *
- * Output:
- *      - NS_inst       : Pointer to created noise suppression instance
- *
- * Return value         :  0 - Ok
- *                        -1 - Error
+ * This function creates an instance of the floating point Noise Suppression.
  */
-int WebRtcNs_Create(NsHandle** NS_inst);
-
+NsHandle* WebRtcNs_Create();
 
 /*
  * This function frees the dynamic memory of a specified noise suppression
@@ -41,12 +30,8 @@ int WebRtcNs_Create(NsHandle** NS_inst);
  *
  * Input:
  *      - NS_inst       : Pointer to NS instance that should be freed
- *
- * Return value         :  0 - Ok
- *                        -1 - Error
  */
-int WebRtcNs_Free(NsHandle* NS_inst);
-
+void WebRtcNs_Free(NsHandle* NS_inst);
 
 /*
  * This function initializes a NS instance and has to be called before any other

@@ -29,10 +29,14 @@ class ModuleRtpRtcpImpl;
 class RTCPReceiver : public TMMBRHelp
 {
 public:
- RTCPReceiver(int32_t id, Clock* clock, ModuleRtpRtcpImpl* owner);
+ RTCPReceiver(int32_t id,
+              Clock* clock,
+              bool receiver_only,
+              RtcpPacketTypeCounterObserver* packet_type_counter_observer,
+              RtcpBandwidthObserver* rtcp_bandwidth_observer,
+              RtcpIntraFrameObserver* rtcp_intra_frame_observer,
+              ModuleRtpRtcpImpl* owner);
     virtual ~RTCPReceiver();
-
-    void ChangeUniqueId(int32_t id);
 
     RTCPMethod Status() const;
     void SetRTCPStatus(RTCPMethod method);
@@ -47,9 +51,6 @@ public:
     uint32_t RemoteSSRC() const;
 
     uint32_t RelaySSRC() const;
-
-    void RegisterRtcpObservers(RtcpIntraFrameObserver* intra_frame_callback,
-                               RtcpBandwidthObserver* bandwidth_callback);
 
     int32_t IncomingRTCPPacket(
         RTCPHelp::RTCPPacketInformation& rtcpPacketInformation,
@@ -84,8 +85,6 @@ public:
     // get statistics
     int32_t StatisticsReceived(
         std::vector<RTCPReportBlock>* receiveBlocks) const;
-
-    void GetPacketTypeCounter(RtcpPacketTypeCounter* packet_counter) const;
 
     // Returns true if we haven't received an RTCP RR for several RTCP
     // intervals, but only triggers true once.
@@ -233,15 +232,15 @@ protected:
       uint32_t remote_ssrc, uint32_t source_ssrc) const
           EXCLUSIVE_LOCKS_REQUIRED(_criticalSectionRTCPReceiver);
 
-  int32_t _id;
-  Clock* _clock;
+  Clock* const _clock;
+  const bool receiver_only_;
   RTCPMethod _method;
   int64_t _lastReceived;
   ModuleRtpRtcpImpl& _rtpRtcp;
 
   CriticalSectionWrapper* _criticalSectionFeedbacks;
-  RtcpBandwidthObserver* _cbRtcpBandwidthObserver;
-  RtcpIntraFrameObserver* _cbRtcpIntraFrameObserver;
+  RtcpBandwidthObserver* const _cbRtcpBandwidthObserver;
+  RtcpIntraFrameObserver* const _cbRtcpIntraFrameObserver;
 
   CriticalSectionWrapper* _criticalSectionRTCPReceiver;
   uint32_t main_ssrc_;
@@ -277,8 +276,9 @@ protected:
   // delivered RTP packet to the remote side.
   int64_t _lastIncreasedSequenceNumberMs;
 
-  RtcpStatisticsCallback* stats_callback_;
+  RtcpStatisticsCallback* stats_callback_ GUARDED_BY(_criticalSectionFeedbacks);
 
+  RtcpPacketTypeCounterObserver* const packet_type_counter_observer_;
   RtcpPacketTypeCounter packet_type_counter_;
 
   RTCPUtility::NackStats nack_stats_;

@@ -38,7 +38,7 @@ int LoopBackTransport::SendPacket(int channel, const void* data, size_t len) {
     }
   }
   RTPHeader header;
-  scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
+  rtc::scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
   if (!parser->Parse(static_cast<const uint8_t*>(data), len, &header)) {
     return -1;
   }
@@ -89,7 +89,7 @@ class RtpRtcpAPITest : public ::testing::Test {
   }
   ~RtpRtcpAPITest() {}
 
-  virtual void SetUp() OVERRIDE {
+  void SetUp() override {
     RtpRtcp::Configuration configuration;
     configuration.id = test_id;
     configuration.audio = true;
@@ -102,9 +102,9 @@ class RtpRtcpAPITest : public ::testing::Test {
   }
 
   int test_id;
-  scoped_ptr<RTPPayloadRegistry> rtp_payload_registry_;
-  scoped_ptr<RtpReceiver> rtp_receiver_;
-  scoped_ptr<RtpRtcp> module_;
+  rtc::scoped_ptr<RTPPayloadRegistry> rtp_payload_registry_;
+  rtc::scoped_ptr<RtpReceiver> rtp_receiver_;
+  rtc::scoped_ptr<RtpRtcp> module_;
   uint32_t test_ssrc_;
   uint32_t test_timestamp_;
   uint16_t test_sequence_number_;
@@ -125,8 +125,6 @@ TEST_F(RtpRtcpAPITest, Basic) {
 }
 
 TEST_F(RtpRtcpAPITest, MTU) {
-  EXPECT_EQ(-1, module_->SetMaxTransferUnit(10));
-  EXPECT_EQ(-1, module_->SetMaxTransferUnit(IP_PACKET_SIZE + 1));
   EXPECT_EQ(0, module_->SetMaxTransferUnit(1234));
   EXPECT_EQ(1234 - 20 - 8, module_->MaxPayloadLength());
 
@@ -174,9 +172,10 @@ TEST_F(RtpRtcpAPITest, RtxSender) {
 TEST_F(RtpRtcpAPITest, RtxReceiver) {
   const uint32_t kRtxSsrc = 1;
   const int kRtxPayloadType = 119;
+  const int kPayloadType = 100;
   EXPECT_FALSE(rtp_payload_registry_->RtxEnabled());
   rtp_payload_registry_->SetRtxSsrc(kRtxSsrc);
-  rtp_payload_registry_->SetRtxPayloadType(kRtxPayloadType);
+  rtp_payload_registry_->SetRtxPayloadType(kRtxPayloadType, kPayloadType);
   EXPECT_TRUE(rtp_payload_registry_->RtxEnabled());
   RTPHeader rtx_header;
   rtx_header.ssrc = kRtxSsrc;

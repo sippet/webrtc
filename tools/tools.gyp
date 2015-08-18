@@ -15,10 +15,10 @@
       'target_name': 'video_quality_analysis',
       'type': 'static_library',
       'dependencies': [
-        '<(DEPTH)/third_party/libyuv/libyuv.gyp:libyuv',
+        '<(webrtc_root)/common_video/common_video.gyp:common_video',
       ],
       'export_dependent_settings': [
-        '<(DEPTH)/third_party/libyuv/libyuv.gyp:libyuv',
+        '<(webrtc_root)/common_video/common_video.gyp:common_video',
       ],
       'sources': [
         'frame_analyzer/video_quality_analysis.h',
@@ -51,8 +51,8 @@
       'target_name': 'rgba_to_i420_converter',
       'type': 'executable',
       'dependencies': [
+        '<(webrtc_root)/common_video/common_video.gyp:common_video',
         '<(webrtc_root)/tools/internal_tools.gyp:command_line_parser',
-        '<(DEPTH)/third_party/libyuv/libyuv.gyp:libyuv',
       ],
       'sources': [
         'converter/converter.h',
@@ -110,8 +110,16 @@
             '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',
           ],
           'sources': [
-            '<(webrtc_root)/modules/audio_processing/agc/test/agc_manager.cc',
-            '<(webrtc_root)/modules/audio_processing/agc/test/agc_manager.h',
+            'agc/agc_manager.cc',
+            'agc/agc_manager.h',
+          ],
+        },
+        {
+          'target_name': 'agc_test_utils',
+          'type': 'static_library',
+          'sources': [
+            'agc/test_utils.cc',
+            'agc/test_utils.h',
           ],
         },
         {
@@ -126,7 +134,7 @@
             'agc_manager',
           ],
           'sources': [
-            '<(webrtc_root)/modules/audio_processing/agc/test/agc_harness.cc',
+            'agc/agc_harness.cc',
           ],
         },  # agc_harness
         {
@@ -139,10 +147,10 @@
             '<(webrtc_root)/test/test.gyp:test_support',
             '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers_default',
             'agc_manager',
+            'agc_test_utils',
           ],
           'sources': [
-            '<(webrtc_root)/modules/audio_processing/agc/test/agc_test.cc',
-            '<(webrtc_root)/modules/audio_processing/agc/test/test_utils.cc',
+            'agc/agc_test.cc',
           ],
         },  # agc_proc
         {
@@ -154,7 +162,7 @@
             'agc_manager',
           ],
           'sources': [
-            '<(webrtc_root)/modules/audio_processing/agc/test/activity_metric.cc',
+            'agc/activity_metric.cc',
           ],
         },  # activity_metric
         {

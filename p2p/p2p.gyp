@@ -13,7 +13,8 @@
       'target_name': 'rtc_p2p',
       'type': 'static_library',
       'dependencies': [
-        '<(webrtc_root)/base/base.gyp:webrtc_base',
+        '<(webrtc_root)/base/base.gyp:rtc_base',
+        '<(webrtc_root)/common.gyp:webrtc_common',
       ],
       'cflags_cc!': [
         '-Wnon-virtual-dtor',
@@ -38,11 +39,7 @@
         'base/port.h',
         'base/portallocator.cc',
         'base/portallocator.h',
-        'base/portallocatorsessionproxy.cc',
-        'base/portallocatorsessionproxy.h',
         'base/portinterface.h',
-        'base/portproxy.cc',
-        'base/portproxy.h',
         'base/pseudotcp.cc',
         'base/pseudotcp.h',
         'base/rawtransport.cc',
@@ -111,6 +108,34 @@
           ],
         }],
       ],
+    },
+    {
+      'target_name': 'libstunprober',
+      'type': 'static_library',
+      'dependencies': [
+        '<(webrtc_root)/base/base.gyp:rtc_base',
+        '<(webrtc_root)/common.gyp:webrtc_common',
+      ],
+      'cflags_cc!': [
+        '-Wnon-virtual-dtor',
+      ],
+      'sources': [
+        'stunprober/stunprober.cc',
+      ],
+    },
+    {
+      'target_name': 'stun_prober',
+      'type': 'executable',
+      'dependencies': [
+        'libstunprober',
+        'rtc_p2p'
+      ],
+      'cflags_cc!': [
+        '-Wnon-virtual-dtor',
+      ],
+      'sources': [
+        'stunprober/main.cc',
+      ],
     }],
 }
-  
+

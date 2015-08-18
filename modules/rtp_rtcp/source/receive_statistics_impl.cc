@@ -12,10 +12,10 @@
 
 #include <math.h>
 
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/rtp_rtcp/source/bitrate.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_utility.h"
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 
@@ -51,22 +51,6 @@ StreamStatisticianImpl::StreamStatisticianImpl(
       rtcp_callback_(rtcp_callback),
       rtp_callback_(rtp_callback) {}
 
-void StreamStatisticianImpl::ResetStatistics() {
-  CriticalSectionScoped cs(stream_lock_.get());
-  last_report_inorder_packets_ = 0;
-  last_report_old_packets_ = 0;
-  last_report_seq_max_ = 0;
-  last_reported_statistics_ = RtcpStatistics();
-  jitter_q4_ = 0;
-  cumulative_loss_ = 0;
-  jitter_q4_transmission_time_offset_ = 0;
-  received_seq_wraps_ = 0;
-  received_seq_max_ = 0;
-  received_seq_first_ = 0;
-  stored_sum_receive_counters_.Add(receive_counters_);
-  receive_counters_ = StreamDataCounters();
-}
-
 void StreamStatisticianImpl::IncomingPacket(const RTPHeader& header,
                                             size_t packet_length,
                                             bool retransmitted) {
@@ -81,17 +65,9 @@ void StreamStatisticianImpl::UpdateCounters(const RTPHeader& header,
   bool in_order = InOrderPacketInternal(header.sequenceNumber);
   ssrc_ = header.ssrc;
   incoming_bitrate_.Update(packet_length);
-  receive_counters_.transmitted.payload_bytes +=
-      packet_length - (header.paddingLength + header.headerLength);
-  receive_counters_.transmitted.header_bytes += header.headerLength;
-  receive_counters_.transmitted.padding_bytes += header.paddingLength;
-  ++receive_counters_.transmitted.packets;
+  receive_counters_.transmitted.AddPacket(packet_length, header);
   if (!in_order && retransmitted) {
-    ++receive_counters_.retransmitted.packets;
-    receive_counters_.retransmitted.payload_bytes +=
-        packet_length - (header.paddingLength + header.headerLength);
-    receive_counters_.retransmitted.header_bytes += header.headerLength;
-    receive_counters_.retransmitted.padding_bytes += header.paddingLength;
+    receive_counters_.retransmitted.AddPacket(packet_length, header);
   }
 
   if (receive_counters_.transmitted.packets == 1) {
@@ -200,10 +176,11 @@ void StreamStatisticianImpl::NotifyRtcpCallback() {
   rtcp_callback_->StatisticsUpdated(data, ssrc);
 }
 
-void StreamStatisticianImpl::FecPacketReceived() {
+void StreamStatisticianImpl::FecPacketReceived(const RTPHeader& header,
+                                               size_t packet_length) {
   {
     CriticalSectionScoped cs(stream_lock_.get());
-    ++receive_counters_.fec.packets;
+    receive_counters_.fec.AddPacket(packet_length, header);
   }
   NotifyRtpCallback();
 }
@@ -327,7 +304,6 @@ void StreamStatisticianImpl::GetReceiveStreamDataCounters(
     StreamDataCounters* data_counters) const {
   CriticalSectionScoped cs(stream_lock_.get());
   *data_counters = receive_counters_;
-  data_counters->Add(stored_sum_receive_counters_);
 }
 
 uint32_t StreamStatisticianImpl::BitrateReceived() const {
@@ -441,12 +417,13 @@ void ReceiveStatisticsImpl::IncomingPacket(const RTPHeader& header,
   impl->IncomingPacket(header, packet_length, retransmitted);
 }
 
-void ReceiveStatisticsImpl::FecPacketReceived(uint32_t ssrc) {
+void ReceiveStatisticsImpl::FecPacketReceived(const RTPHeader& header,
+                                              size_t packet_length) {
   CriticalSectionScoped cs(receive_statistics_lock_.get());
-  StatisticianImplMap::iterator it = statisticians_.find(ssrc);
+  StatisticianImplMap::iterator it = statisticians_.find(header.ssrc);
   // Ignore FEC if it is the first packet.
   if (it != statisticians_.end()) {
-    it->second->FecPacketReceived();
+    it->second->FecPacketReceived(header, packet_length);
   }
 }
 
@@ -543,7 +520,8 @@ void NullReceiveStatistics::IncomingPacket(const RTPHeader& rtp_header,
                                            size_t packet_length,
                                            bool retransmitted) {}
 
-void NullReceiveStatistics::FecPacketReceived(uint32_t ssrc) {}
+void NullReceiveStatistics::FecPacketReceived(const RTPHeader& header,
+                                              size_t packet_length) {}
 
 StatisticianMap NullReceiveStatistics::GetActiveStatisticians() const {
   return StatisticianMap();

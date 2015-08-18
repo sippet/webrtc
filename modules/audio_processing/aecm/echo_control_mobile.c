@@ -80,28 +80,15 @@ static int WebRtcAecm_EstBufDelay(AecMobile* aecmInst, short msInSndCardBuf);
 // Stuffs the farend buffer if the estimated delay is too large
 static int WebRtcAecm_DelayComp(AecMobile* aecmInst);
 
-int32_t WebRtcAecm_Create(void **aecmInst)
-{
-  AecMobile* aecm;
-    if (aecmInst == NULL)
-    {
-        return -1;
-    }
-
-    aecm = malloc(sizeof(AecMobile));
-    *aecmInst = aecm;
-    if (aecm == NULL)
-    {
-        return -1;
-    }
+void* WebRtcAecm_Create() {
+    AecMobile* aecm = malloc(sizeof(AecMobile));
 
     WebRtcSpl_Init();
 
-    if (WebRtcAecm_CreateCore(&aecm->aecmCore) == -1)
-    {
+    aecm->aecmCore = WebRtcAecm_CreateCore();
+    if (!aecm->aecmCore) {
         WebRtcAecm_Free(aecm);
-        aecm = NULL;
-        return -1;
+        return NULL;
     }
 
     aecm->farendBuf = WebRtc_CreateBuffer(kBufSizeSamp,
@@ -109,8 +96,7 @@ int32_t WebRtcAecm_Create(void **aecmInst)
     if (!aecm->farendBuf)
     {
         WebRtcAecm_Free(aecm);
-        aecm = NULL;
-        return -1;
+        return NULL;
     }
 
     aecm->initFlag = 0;
@@ -127,16 +113,14 @@ int32_t WebRtcAecm_Create(void **aecmInst)
     aecm->preCompFile = fopen("preComp.pcm", "wb");
     aecm->postCompFile = fopen("postComp.pcm", "wb");
 #endif // AEC_DEBUG
-    return 0;
+    return aecm;
 }
 
-int32_t WebRtcAecm_Free(void *aecmInst)
-{
+void WebRtcAecm_Free(void* aecmInst) {
   AecMobile* aecm = aecmInst;
 
-    if (aecm == NULL)
-    {
-        return -1;
+    if (aecm == NULL) {
+      return;
     }
 
 #ifdef AEC_DEBUG
@@ -153,8 +137,6 @@ int32_t WebRtcAecm_Free(void *aecmInst)
     WebRtcAecm_FreeCore(aecm->aecmCore);
     WebRtc_FreeBuffer(aecm->farendBuf);
     free(aecm);
-
-    return 0;
 }
 
 int32_t WebRtcAecm_Init(void *aecmInst, int32_t sampFreq)

@@ -22,7 +22,6 @@
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/interface/field_trial.h"
 #include "webrtc/system_wrappers/interface/logging.h"
-#include "webrtc/system_wrappers/interface/trace_event.h"
 
 namespace {
 // Time limit in milliseconds between packet bursts.
@@ -91,9 +90,9 @@ class PacketQueue {
   virtual ~PacketQueue() {}
 
   void Push(const Packet& packet) {
-    if (!AddToDupeSet(packet))
+    if (!AddToDupeSet(packet)) {
       return;
-
+    }
     // Store packet in list, use pointers in priority queue for cheaper moves.
     // Packets have a handle to its own iterator in the list, for easy removal
     // when popping from queue.
@@ -176,6 +175,8 @@ class IntervalBudget {
 
   void set_target_rate_kbps(int target_rate_kbps) {
     target_rate_kbps_ = target_rate_kbps;
+    bytes_remaining_ =
+        std::max(-kWindowMs * target_rate_kbps_ / 8, bytes_remaining_);
   }
 
   void IncreaseBudget(int64_t delta_time_ms) {
@@ -191,14 +192,18 @@ class IntervalBudget {
 
   void UseBudget(size_t bytes) {
     bytes_remaining_ = std::max(bytes_remaining_ - static_cast<int>(bytes),
-                                -500 * target_rate_kbps_ / 8);
+                                -kWindowMs * target_rate_kbps_ / 8);
   }
 
-  int bytes_remaining() const { return bytes_remaining_; }
+  size_t bytes_remaining() const {
+    return static_cast<size_t>(std::max(0, bytes_remaining_));
+  }
 
   int target_rate_kbps() const { return target_rate_kbps_; }
 
  private:
+  static const int kWindowMs = 500;
+
   int target_rate_kbps_;
   int bytes_remaining_;
 };
@@ -216,6 +221,7 @@ PacedSender::PacedSender(Clock* clock,
       critsect_(CriticalSectionWrapper::CreateCriticalSection()),
       enabled_(true),
       paused_(false),
+      probing_enabled_(true),
       media_budget_(new paced_sender::IntervalBudget(max_bitrate_kbps)),
       padding_budget_(new paced_sender::IntervalBudget(min_bitrate_kbps)),
       prober_(new BitrateProber()),
@@ -236,6 +242,11 @@ void PacedSender::Pause() {
 void PacedSender::Resume() {
   CriticalSectionScoped cs(critsect_.get());
   paused_ = false;
+}
+
+void PacedSender::SetProbingEnabled(bool enabled) {
+  assert(packet_counter_ == 0);
+  probing_enabled_ = enabled;
 }
 
 void PacedSender::SetStatus(bool enable) {
@@ -265,8 +276,7 @@ bool PacedSender::SendPacket(Priority priority, uint32_t ssrc,
   if (!enabled_) {
     return true;  // We can send now.
   }
-  // Enable probing if the probing experiment is enabled.
-  if (!prober_->IsProbing() && ProbingExperimentIsEnabled()) {
+  if (probing_enabled_ && !prober_->IsProbing()) {
     prober_->SetEnabled(true);
   }
   prober_->MaybeInitializeProbe(bitrate_bps_);
@@ -306,7 +316,10 @@ int64_t PacedSender::QueueInMs() const {
 int64_t PacedSender::TimeUntilNextProcess() {
   CriticalSectionScoped cs(critsect_.get());
   if (prober_->IsProbing()) {
-    return prober_->TimeUntilNextProbe(clock_->TimeInMilliseconds());
+    int64_t ret = prober_->TimeUntilNextProbe(clock_->TimeInMilliseconds());
+    if (ret >= 0) {
+      return ret;
+    }
   }
   int64_t elapsed_time_us = clock_->TimeInMicroseconds() - time_last_update_us_;
   int64_t elapsed_time_ms = (elapsed_time_us + 500) / 1000;
@@ -326,10 +339,10 @@ int32_t PacedSender::Process() {
       int64_t delta_time_ms = std::min(kMaxIntervalTimeMs, elapsed_time_ms);
       UpdateBytesPerInterval(delta_time_ms);
     }
-
     while (!packets_->Empty()) {
-      if (media_budget_->bytes_remaining() <= 0 && !prober_->IsProbing())
+      if (media_budget_->bytes_remaining() == 0 && !prober_->IsProbing()) {
         return 0;
+      }
 
       // Since we need to release the lock in order to send, we first pop the
       // element from the priority queue but keep it in storage, so that we can
@@ -338,8 +351,9 @@ int32_t PacedSender::Process() {
       if (SendPacket(packet)) {
         // Send succeeded, remove it from the queue.
         packets_->FinalizePop(packet);
-        if (prober_->IsProbing())
+        if (prober_->IsProbing()) {
           return 0;
+        }
       } else {
         // Send failed, put it back into the queue.
         packets_->CancelPop(packet);
@@ -347,10 +361,14 @@ int32_t PacedSender::Process() {
       }
     }
 
-    int padding_needed = padding_budget_->bytes_remaining();
-    if (padding_needed > 0) {
+    size_t padding_needed;
+    if (prober_->IsProbing() && ProbingExperimentIsEnabled())
+      padding_needed = prober_->RecommendedPacketSize();
+    else
+      padding_needed = padding_budget_->bytes_remaining();
+
+    if (padding_needed > 0)
       SendPadding(static_cast<size_t>(padding_needed));
-    }
   }
   return 0;
 }
@@ -378,9 +396,11 @@ void PacedSender::SendPadding(size_t padding_needed) {
   size_t bytes_sent = callback_->TimeToSendPadding(padding_needed);
   critsect_->Enter();
 
-  // Update padding bytes sent.
-  media_budget_->UseBudget(bytes_sent);
-  padding_budget_->UseBudget(bytes_sent);
+  if (bytes_sent > 0) {
+    prober_->PacketSent(clock_->TimeInMilliseconds(), bytes_sent);
+    media_budget_->UseBudget(bytes_sent);
+    padding_budget_->UseBudget(bytes_sent);
+  }
 }
 
 void PacedSender::UpdateBytesPerInterval(int64_t delta_time_ms) {

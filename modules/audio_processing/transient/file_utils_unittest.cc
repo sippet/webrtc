@@ -14,9 +14,10 @@
 #include <string>
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/system_wrappers/interface/file_wrapper.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/testsupport/fileutils.h"
+#include "webrtc/test/testsupport/gtest_disable.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -58,7 +59,7 @@ class TransientFileUtilsTest: public ::testing::Test {
   const std::string kTestFileNamef;
 };
 
-TEST_F(TransientFileUtilsTest, ConvertByteArrayToFloat) {
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ConvertByteArrayToFloat)) {
   float value = 0.0;
 
   EXPECT_EQ(0, ConvertByteArrayToFloat(kPiBytesf, &value));
@@ -71,7 +72,7 @@ TEST_F(TransientFileUtilsTest, ConvertByteArrayToFloat) {
   EXPECT_FLOAT_EQ(kAvogadro, value);
 }
 
-TEST_F(TransientFileUtilsTest, ConvertByteArrayToDouble) {
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ConvertByteArrayToDouble)) {
   double value = 0.0;
 
   EXPECT_EQ(0, ConvertByteArrayToDouble(kPiBytes, &value));
@@ -84,8 +85,8 @@ TEST_F(TransientFileUtilsTest, ConvertByteArrayToDouble) {
   EXPECT_DOUBLE_EQ(kAvogadro, value);
 }
 
-TEST_F(TransientFileUtilsTest, ConvertFloatToByteArray) {
-  scoped_ptr<uint8_t[]> bytes(new uint8_t[4]);
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ConvertFloatToByteArray)) {
+  rtc::scoped_ptr<uint8_t[]> bytes(new uint8_t[4]);
 
   EXPECT_EQ(0, ConvertFloatToByteArray(kPi, bytes.get()));
   EXPECT_EQ(0, memcmp(bytes.get(), kPiBytesf, 4));
@@ -97,8 +98,8 @@ TEST_F(TransientFileUtilsTest, ConvertFloatToByteArray) {
   EXPECT_EQ(0, memcmp(bytes.get(), kAvogadroBytesf, 4));
 }
 
-TEST_F(TransientFileUtilsTest, ConvertDoubleToByteArray) {
-  scoped_ptr<uint8_t[]> bytes(new uint8_t[8]);
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ConvertDoubleToByteArray)) {
+  rtc::scoped_ptr<uint8_t[]> bytes(new uint8_t[8]);
 
   EXPECT_EQ(0, ConvertDoubleToByteArray(kPi, bytes.get()));
   EXPECT_EQ(0, memcmp(bytes.get(), kPiBytes, 8));
@@ -110,10 +111,10 @@ TEST_F(TransientFileUtilsTest, ConvertDoubleToByteArray) {
   EXPECT_EQ(0, memcmp(bytes.get(), kAvogadroBytes, 8));
 }
 
-TEST_F(TransientFileUtilsTest, ReadInt16BufferFromFile) {
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ReadInt16BufferFromFile)) {
   std::string test_filename = kTestFileName;
 
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   file->OpenFile(test_filename.c_str(),
                  true,    // Read only.
@@ -123,7 +124,7 @@ TEST_F(TransientFileUtilsTest, ReadInt16BufferFromFile) {
       << kTestFileName.c_str();
 
   const size_t kBufferLength = 12;
-  scoped_ptr<int16_t[]> buffer(new int16_t[kBufferLength]);
+  rtc::scoped_ptr<int16_t[]> buffer(new int16_t[kBufferLength]);
 
   EXPECT_EQ(kBufferLength, ReadInt16BufferFromFile(file.get(),
                                                    kBufferLength,
@@ -148,10 +149,11 @@ TEST_F(TransientFileUtilsTest, ReadInt16BufferFromFile) {
   EXPECT_EQ(17631, buffer[kBufferLength - 1]);
 }
 
-TEST_F(TransientFileUtilsTest, ReadInt16FromFileToFloatBuffer) {
+TEST_F(TransientFileUtilsTest,
+       DISABLED_ON_IOS(ReadInt16FromFileToFloatBuffer)) {
   std::string test_filename = kTestFileName;
 
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   file->OpenFile(test_filename.c_str(),
                  true,    // Read only.
@@ -161,7 +163,7 @@ TEST_F(TransientFileUtilsTest, ReadInt16FromFileToFloatBuffer) {
       << kTestFileName.c_str();
 
   const size_t kBufferLength = 12;
-  scoped_ptr<float[]> buffer(new float[kBufferLength]);
+  rtc::scoped_ptr<float[]> buffer(new float[kBufferLength]);
 
   EXPECT_EQ(kBufferLength, ReadInt16FromFileToFloatBuffer(file.get(),
                                                           kBufferLength,
@@ -189,10 +191,11 @@ TEST_F(TransientFileUtilsTest, ReadInt16FromFileToFloatBuffer) {
   EXPECT_DOUBLE_EQ(17631, buffer[kBufferLength - 1]);
 }
 
-TEST_F(TransientFileUtilsTest, ReadInt16FromFileToDoubleBuffer) {
+TEST_F(TransientFileUtilsTest,
+       DISABLED_ON_IOS(ReadInt16FromFileToDoubleBuffer)) {
   std::string test_filename = kTestFileName;
 
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   file->OpenFile(test_filename.c_str(),
                  true,    // Read only.
@@ -202,7 +205,7 @@ TEST_F(TransientFileUtilsTest, ReadInt16FromFileToDoubleBuffer) {
       << kTestFileName.c_str();
 
   const size_t kBufferLength = 12;
-  scoped_ptr<double[]> buffer(new double[kBufferLength]);
+  rtc::scoped_ptr<double[]> buffer(new double[kBufferLength]);
 
   EXPECT_EQ(kBufferLength, ReadInt16FromFileToDoubleBuffer(file.get(),
                                                            kBufferLength,
@@ -229,10 +232,10 @@ TEST_F(TransientFileUtilsTest, ReadInt16FromFileToDoubleBuffer) {
   EXPECT_DOUBLE_EQ(17631, buffer[kBufferLength - 1]);
 }
 
-TEST_F(TransientFileUtilsTest, ReadFloatBufferFromFile) {
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ReadFloatBufferFromFile)) {
   std::string test_filename = kTestFileNamef;
 
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   file->OpenFile(test_filename.c_str(),
                  true,    // Read only.
@@ -242,8 +245,7 @@ TEST_F(TransientFileUtilsTest, ReadFloatBufferFromFile) {
       << kTestFileNamef.c_str();
 
   const size_t kBufferLength = 3;
-  scoped_ptr<float[]> buffer(new float[kBufferLength]);
-
+  rtc::scoped_ptr<float[]> buffer(new float[kBufferLength]);
 
   EXPECT_EQ(kBufferLength, ReadFloatBufferFromFile(file.get(),
                                                    kBufferLength,
@@ -267,10 +269,10 @@ TEST_F(TransientFileUtilsTest, ReadFloatBufferFromFile) {
   EXPECT_FLOAT_EQ(kAvogadro, buffer[2]);
 }
 
-TEST_F(TransientFileUtilsTest, ReadDoubleBufferFromFile) {
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ReadDoubleBufferFromFile)) {
   std::string test_filename = kTestFileName;
 
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   file->OpenFile(test_filename.c_str(),
                  true,    // Read only.
@@ -280,8 +282,7 @@ TEST_F(TransientFileUtilsTest, ReadDoubleBufferFromFile) {
       << kTestFileName.c_str();
 
   const size_t kBufferLength = 3;
-  scoped_ptr<double[]> buffer(new double[kBufferLength]);
-
+  rtc::scoped_ptr<double[]> buffer(new double[kBufferLength]);
 
   EXPECT_EQ(kBufferLength, ReadDoubleBufferFromFile(file.get(),
                                                     kBufferLength,
@@ -305,8 +306,8 @@ TEST_F(TransientFileUtilsTest, ReadDoubleBufferFromFile) {
   EXPECT_DOUBLE_EQ(kAvogadro, buffer[2]);
 }
 
-TEST_F(TransientFileUtilsTest, WriteInt16BufferToFile) {
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(WriteInt16BufferToFile)) {
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   std::string kOutFileName = test::TempFilename(test::OutputPath(),
                                                 "utils_test");
@@ -319,8 +320,8 @@ TEST_F(TransientFileUtilsTest, WriteInt16BufferToFile) {
       << kOutFileName.c_str();
 
   const size_t kBufferLength = 3;
-  scoped_ptr<int16_t[]> written_buffer(new int16_t[kBufferLength]);
-  scoped_ptr<int16_t[]> read_buffer(new int16_t[kBufferLength]);
+  rtc::scoped_ptr<int16_t[]> written_buffer(new int16_t[kBufferLength]);
+  rtc::scoped_ptr<int16_t[]> read_buffer(new int16_t[kBufferLength]);
 
   written_buffer[0] = 1;
   written_buffer[1] = 2;
@@ -347,8 +348,8 @@ TEST_F(TransientFileUtilsTest, WriteInt16BufferToFile) {
                       kBufferLength * sizeof(written_buffer[0])));
 }
 
-TEST_F(TransientFileUtilsTest, WriteFloatBufferToFile) {
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(WriteFloatBufferToFile)) {
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   std::string kOutFileName = test::TempFilename(test::OutputPath(),
                                                 "utils_test");
@@ -361,8 +362,8 @@ TEST_F(TransientFileUtilsTest, WriteFloatBufferToFile) {
       << kOutFileName.c_str();
 
   const size_t kBufferLength = 3;
-  scoped_ptr<float[]> written_buffer(new float[kBufferLength]);
-  scoped_ptr<float[]> read_buffer(new float[kBufferLength]);
+  rtc::scoped_ptr<float[]> written_buffer(new float[kBufferLength]);
+  rtc::scoped_ptr<float[]> read_buffer(new float[kBufferLength]);
 
   written_buffer[0] = kPi;
   written_buffer[1] = kE;
@@ -389,8 +390,8 @@ TEST_F(TransientFileUtilsTest, WriteFloatBufferToFile) {
                       kBufferLength * sizeof(written_buffer[0])));
 }
 
-TEST_F(TransientFileUtilsTest, WriteDoubleBufferToFile) {
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(WriteDoubleBufferToFile)) {
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   std::string kOutFileName = test::TempFilename(test::OutputPath(),
                                                 "utils_test");
@@ -403,8 +404,8 @@ TEST_F(TransientFileUtilsTest, WriteDoubleBufferToFile) {
       << kOutFileName.c_str();
 
   const size_t kBufferLength = 3;
-  scoped_ptr<double[]> written_buffer(new double[kBufferLength]);
-  scoped_ptr<double[]> read_buffer(new double[kBufferLength]);
+  rtc::scoped_ptr<double[]> written_buffer(new double[kBufferLength]);
+  rtc::scoped_ptr<double[]> read_buffer(new double[kBufferLength]);
 
   written_buffer[0] = kPi;
   written_buffer[1] = kE;
@@ -431,13 +432,13 @@ TEST_F(TransientFileUtilsTest, WriteDoubleBufferToFile) {
                       kBufferLength * sizeof(written_buffer[0])));
 }
 
-TEST_F(TransientFileUtilsTest, ExpectedErrorReturnValues) {
+TEST_F(TransientFileUtilsTest, DISABLED_ON_IOS(ExpectedErrorReturnValues)) {
   std::string test_filename = kTestFileName;
 
   double value;
-  scoped_ptr<int16_t[]> int16_buffer(new int16_t[1]);
-  scoped_ptr<double[]> double_buffer(new double[1]);
-  scoped_ptr<FileWrapper> file(FileWrapper::Create());
+  rtc::scoped_ptr<int16_t[]> int16_buffer(new int16_t[1]);
+  rtc::scoped_ptr<double[]> double_buffer(new double[1]);
+  rtc::scoped_ptr<FileWrapper> file(FileWrapper::Create());
 
   EXPECT_EQ(-1, ConvertByteArrayToDouble(NULL, &value));
   EXPECT_EQ(-1, ConvertByteArrayToDouble(kPiBytes, NULL));

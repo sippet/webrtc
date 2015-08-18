@@ -106,6 +106,11 @@ TEST_F(SplTest, InlineTest) {
     EXPECT_EQ(15, WebRtcSpl_NormW16(-1));
     EXPECT_EQ(0, WebRtcSpl_NormW16(WEBRTC_SPL_WORD16_MIN));
     EXPECT_EQ(4, WebRtcSpl_NormW16(b32));
+    for (int ii = 0; ii < 15; ++ii) {
+      int16_t value = 1 << ii;
+      EXPECT_EQ(14 - ii, WebRtcSpl_NormW16(value));
+      EXPECT_EQ(15 - ii, WebRtcSpl_NormW16(-value));
+    }
 
     EXPECT_EQ(0, WebRtcSpl_NormU32(0u));
     EXPECT_EQ(0, WebRtcSpl_NormU32(0xffffffff));
@@ -490,10 +495,11 @@ TEST_F(SplTest, AutoCorrelationTest) {
   const int32_t expected[kVector16Size] = {302681398, 14223410, -121705063,
     -85221647, -17104971, 61806945, 6644603, -669329, 43};
 
-  EXPECT_EQ(-1, WebRtcSpl_AutoCorrelation(vector16,
-      kVector16Size, kVector16Size + 1, vector32, &scale));
-  EXPECT_EQ(kVector16Size, WebRtcSpl_AutoCorrelation(vector16,
-      kVector16Size, kVector16Size - 1, vector32, &scale));
+  EXPECT_EQ(-1, WebRtcSpl_AutoCorrelation(vector16, kVector16Size,
+                                          kVector16Size + 1, vector32, &scale));
+  EXPECT_EQ(kVector16Size,
+            WebRtcSpl_AutoCorrelation(vector16, kVector16Size,
+                                      kVector16Size - 1, vector32, &scale));
   EXPECT_EQ(3, scale);
   for (int i = 0; i < kVector16Size; ++i) {
     EXPECT_EQ(expected[i], vector32[i]);

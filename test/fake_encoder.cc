@@ -45,10 +45,9 @@ int32_t FakeEncoder::InitEncode(const VideoCodec* config,
   return 0;
 }
 
-int32_t FakeEncoder::Encode(
-    const I420VideoFrame& input_image,
-    const CodecSpecificInfo* codec_specific_info,
-    const std::vector<VideoFrameType>* frame_types) {
+int32_t FakeEncoder::Encode(const VideoFrame& input_image,
+                            const CodecSpecificInfo* codec_specific_info,
+                            const std::vector<VideoFrameType>* frame_types) {
   assert(config_.maxFramerate > 0);
   int64_t time_since_last_encode_ms = 1000 / config_.maxFramerate;
   int64_t time_now_ms = clock_->TimeInMilliseconds();
@@ -98,6 +97,8 @@ int32_t FakeEncoder::Encode(
     encoded._timeStamp = input_image.timestamp();
     encoded.capture_time_ms_ = input_image.render_time_ms();
     encoded._frameType = (*frame_types)[i];
+    encoded._encodedWidth = config_.simulcastStream[i].width;
+    encoded._encodedHeight = config_.simulcastStream[i].height;
     // Always encode something on the first frame.
     if (min_stream_bits > bits_available && i > 0) {
       encoded._length = 0;
@@ -157,9 +158,9 @@ int32_t FakeH264Encoder::Encoded(const EncodedImage& encoded_image,
     fragmentation.fragmentationOffset[2] = kSpsSize + kPpsSize;
     fragmentation.fragmentationLength[2] =
         encoded_image._length - (kSpsSize + kPpsSize);
-    const size_t kSpsNalHeader = 0x37;
-    const size_t kPpsNalHeader = 0x38;
-    const size_t kIdrNalHeader = 0x15;
+    const size_t kSpsNalHeader = 0x67;
+    const size_t kPpsNalHeader = 0x68;
+    const size_t kIdrNalHeader = 0x65;
     encoded_image._buffer[fragmentation.fragmentationOffset[0]] = kSpsNalHeader;
     encoded_image._buffer[fragmentation.fragmentationOffset[1]] = kPpsNalHeader;
     encoded_image._buffer[fragmentation.fragmentationOffset[2]] = kIdrNalHeader;
@@ -168,7 +169,7 @@ int32_t FakeH264Encoder::Encoded(const EncodedImage& encoded_image,
     fragmentation.VerifyAndAllocateFragmentationHeader(kNumSlices);
     fragmentation.fragmentationOffset[0] = 0;
     fragmentation.fragmentationLength[0] = encoded_image._length;
-    const size_t kNalHeader = 0x11;
+    const size_t kNalHeader = 0x41;
     encoded_image._buffer[fragmentation.fragmentationOffset[0]] = kNalHeader;
   }
   uint8_t value = 0;
@@ -188,7 +189,7 @@ DelayedEncoder::DelayedEncoder(Clock* clock, int delay_ms)
     : test::FakeEncoder(clock),
       delay_ms_(delay_ms) {}
 
-int32_t DelayedEncoder::Encode(const I420VideoFrame& input_image,
+int32_t DelayedEncoder::Encode(const VideoFrame& input_image,
                                const CodecSpecificInfo* codec_specific_info,
                                const std::vector<VideoFrameType>* frame_types) {
   SleepMs(delay_ms_);

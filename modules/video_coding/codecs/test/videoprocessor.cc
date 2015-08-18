@@ -181,17 +181,10 @@ bool VideoProcessorImpl::ProcessFrame(int frame_number) {
   }
   if (frame_reader_->ReadFrame(source_buffer_)) {
     // Copy the source frame to the newly read frame data.
-    int size_y = config_.codec_settings->width * config_.codec_settings->height;
-    int half_width = (config_.codec_settings->width + 1) / 2;
-    int half_height = (config_.codec_settings->height + 1) / 2;
-    int size_uv = half_width * half_height;
-    source_frame_.CreateFrame(size_y, source_buffer_,
-                              size_uv, source_buffer_ + size_y,
-                              size_uv, source_buffer_ + size_y + size_uv,
+    source_frame_.CreateFrame(source_buffer_,
                               config_.codec_settings->width,
                               config_.codec_settings->height,
-                              config_.codec_settings->width,
-                              half_width, half_width);
+                              kVideoRotation_0);
 
     // Ensure we have a new statistics data object we can fill:
     FrameStatistic& stat = stats_->NewFrame(frame_number);
@@ -271,7 +264,7 @@ void VideoProcessorImpl::FrameEncoded(const EncodedImage& encoded_image) {
         assert(false);
     }
   }
-  scoped_ptr<uint8_t[]> copied_buffer(new uint8_t[encoded_image._length]);
+  rtc::scoped_ptr<uint8_t[]> copied_buffer(new uint8_t[encoded_image._length]);
   memcpy(copied_buffer.get(), encoded_image._buffer, encoded_image._length);
   EncodedImage copied_image;
   memcpy(&copied_image, &encoded_image, sizeof(copied_image));
@@ -299,7 +292,7 @@ void VideoProcessorImpl::FrameEncoded(const EncodedImage& encoded_image) {
   last_frame_missing_ = copied_image._length == 0;
 }
 
-void VideoProcessorImpl::FrameDecoded(const I420VideoFrame& image) {
+void VideoProcessorImpl::FrameDecoded(const VideoFrame& image) {
   TickTime decode_stop = TickTime::Now();
   int frame_number = image.timestamp();
   // Report stats
@@ -319,7 +312,7 @@ void VideoProcessorImpl::FrameDecoded(const I420VideoFrame& image) {
   // upsample back to original size: needed for PSNR and SSIM computations.
   if (image.width() !=  config_.codec_settings->width ||
       image.height() != config_.codec_settings->height) {
-    I420VideoFrame up_image;
+    VideoFrame up_image;
     int ret_val = scaler_.Set(image.width(), image.height(),
                               config_.codec_settings->width,
                               config_.codec_settings->height,
@@ -337,7 +330,7 @@ void VideoProcessorImpl::FrameDecoded(const I420VideoFrame& image) {
     }
     // TODO(mikhal): Extracting the buffer for now - need to update test.
     size_t length = CalcBufferSize(kI420, up_image.width(), up_image.height());
-    scoped_ptr<uint8_t[]> image_buffer(new uint8_t[length]);
+    rtc::scoped_ptr<uint8_t[]> image_buffer(new uint8_t[length]);
     int extracted_length = ExtractBuffer(up_image, length, image_buffer.get());
     assert(extracted_length > 0);
     // Update our copy of the last successful frame:
@@ -351,7 +344,7 @@ void VideoProcessorImpl::FrameDecoded(const I420VideoFrame& image) {
     // Update our copy of the last successful frame:
     // TODO(mikhal): Add as a member function, so won't be allocated per frame.
     size_t length = CalcBufferSize(kI420, image.width(), image.height());
-    scoped_ptr<uint8_t[]> image_buffer(new uint8_t[length]);
+    rtc::scoped_ptr<uint8_t[]> image_buffer(new uint8_t[length]);
     int extracted_length = ExtractBuffer(image, length, image_buffer.get());
     assert(extracted_length > 0);
     memcpy(last_successful_frame_buffer_, image_buffer.get(), extracted_length);
@@ -411,9 +404,8 @@ VideoProcessorImpl::VideoProcessorEncodeCompleteCallback::Encoded(
   video_processor_->FrameEncoded(encoded_image);  // Forward to parent class.
   return 0;
 }
-int32_t
-VideoProcessorImpl::VideoProcessorDecodeCompleteCallback::Decoded(
-    I420VideoFrame& image) {
+int32_t VideoProcessorImpl::VideoProcessorDecodeCompleteCallback::Decoded(
+    VideoFrame& image) {
   video_processor_->FrameDecoded(image);  // forward to parent class
   return 0;
 }

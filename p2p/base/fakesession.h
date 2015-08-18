@@ -177,6 +177,12 @@ class FakeTransportChannel : public TransportChannelImpl,
       SignalConnectionRemoved(this);
   }
 
+  void SetReceiving(bool receiving) {
+    set_receiving(receiving);
+  }
+
+  void SetReceivingTimeout(int timeout) override {}
+
   virtual int SendPacket(const char* data, size_t len,
                          const rtc::PacketOptions& options, int flags) {
     if (state_ != STATE_CONNECTED) {
@@ -198,6 +204,9 @@ class FakeTransportChannel : public TransportChannelImpl,
   virtual int SetOption(rtc::Socket::Option opt, int value) {
     return true;
   }
+  virtual bool GetOption(rtc::Socket::Option opt, int* value) {
+    return true;
+  }
   virtual int GetError() {
     return 0;
   }
@@ -210,9 +219,8 @@ class FakeTransportChannel : public TransportChannelImpl,
   virtual void OnMessage(rtc::Message* msg) {
     PacketMessageData* data = static_cast<PacketMessageData*>(
         msg->pdata);
-    dest_->SignalReadPacket(dest_, data->packet.data(),
-                            data->packet.length(),
-                            rtc::CreatePacketTime(0), 0);
+    dest_->SignalReadPacket(dest_, data->packet.data<char>(),
+                            data->packet.size(), rtc::CreatePacketTime(0), 0);
     delete data;
   }
 
@@ -240,6 +248,10 @@ class FakeTransportChannel : public TransportChannelImpl,
       *cipher = chosen_srtp_cipher_;
       return true;
     }
+    return false;
+  }
+
+  virtual bool GetSslCipher(std::string* cipher) {
     return false;
   }
 
@@ -288,7 +300,7 @@ class FakeTransportChannel : public TransportChannelImpl,
     }
   }
 
-  virtual bool GetStats(ConnectionInfos* infos) OVERRIDE {
+  bool GetStats(ConnectionInfos* infos) override {
     ConnectionInfo info;
     infos->clear();
     infos->push_back(info);
@@ -458,12 +470,11 @@ class FakeSession : public BaseSession {
 
   virtual TransportChannel* CreateChannel(
       const std::string& content_name,
-      const std::string& channel_name,
       int component) {
     if (fail_create_channel_) {
       return NULL;
     }
-    return BaseSession::CreateChannel(content_name, channel_name, component);
+    return BaseSession::CreateChannel(content_name, component);
   }
 
   void set_fail_channel_creation(bool fail_channel_creation) {

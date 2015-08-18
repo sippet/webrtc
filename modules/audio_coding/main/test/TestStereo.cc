@@ -343,14 +343,6 @@ void TestStereo::Perform() {
   EXPECT_EQ(0, acm_a_->VAD(&dtx, &vad, &vad_mode));
   EXPECT_FALSE(dtx);
   EXPECT_FALSE(vad);
-  EXPECT_EQ(-1, acm_a_->SetVAD(true, false, VADNormal));
-  EXPECT_EQ(0, acm_a_->VAD(&dtx, &vad, &vad_mode));
-  EXPECT_FALSE(dtx);
-  EXPECT_FALSE(vad);
-  EXPECT_EQ(-1, acm_a_->SetVAD(false, true, VADNormal));
-  EXPECT_EQ(0, acm_a_->VAD(&dtx, &vad, &vad_mode));
-  EXPECT_FALSE(dtx);
-  EXPECT_FALSE(vad);
   EXPECT_EQ(0, acm_a_->SetVAD(false, false, VADNormal));
   EXPECT_EQ(0, acm_a_->VAD(&dtx, &vad, &vad_mode));
   EXPECT_FALSE(dtx);
@@ -779,10 +771,7 @@ void TestStereo::Run(TestPackStereo* channel, int in_channels, int out_channels,
       }
       in_file_stereo_->Read10MsData(audio_frame);
     }
-    EXPECT_EQ(0, acm_a_->Add10MsData(audio_frame));
-
-    // Run sender side of ACM
-    EXPECT_GT(acm_a_->Process(), -1);
+    EXPECT_GE(acm_a_->Add10MsData(audio_frame), 0);
 
     // Verify that the received packet size matches the settings.
     rec_size = channel->payload_size();

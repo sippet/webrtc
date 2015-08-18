@@ -64,7 +64,7 @@ bool RTPReceiverAudio::TelephoneEventForwardToDecoder() const {
 bool RTPReceiverAudio::TelephoneEventPayloadType(
     int8_t payload_type) const {
   CriticalSectionScoped lock(crit_sect_.get());
-  return (telephone_event_payload_type_ == payload_type) ? true : false;
+  return telephone_event_payload_type_ == payload_type;
 }
 
 bool RTPReceiverAudio::CNGPayloadType(int8_t payload_type,
@@ -187,9 +187,9 @@ int32_t RTPReceiverAudio::ParseRtpPacket(WebRtcRTPHeader* rtp_header,
                                          size_t payload_length,
                                          int64_t timestamp_ms,
                                          bool is_first_packet) {
-  TRACE_EVENT2("webrtc_rtp", "Audio::ParseRtp",
-               "seqnum", rtp_header->header.sequenceNumber,
-               "timestamp", rtp_header->header.timestamp);
+  TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("webrtc_rtp"), "Audio::ParseRtp",
+               "seqnum", rtp_header->header.sequenceNumber, "timestamp",
+               rtp_header->header.timestamp);
   rtp_header->type.Audio.numEnergy = rtp_header->header.numCSRCs;
   num_energy_ = rtp_header->type.Audio.numEnergy;
   if (rtp_header->type.Audio.numEnergy > 0 &&
@@ -228,10 +228,8 @@ RTPAliveType RTPReceiverAudio::ProcessDeadOrAlive(
 
 void RTPReceiverAudio::CheckPayloadChanged(int8_t payload_type,
                                            PayloadUnion* specific_payload,
-                                           bool* should_reset_statistics,
                                            bool* should_discard_changes) {
   *should_discard_changes = false;
-  *should_reset_statistics = false;
 
   if (TelephoneEventPayloadType(payload_type)) {
     // Don't do callbacks for DTMF packets.
@@ -243,8 +241,6 @@ void RTPReceiverAudio::CheckPayloadChanged(int8_t payload_type,
   bool is_cng_payload_type = CNGPayloadType(payload_type,
                                             &specific_payload->Audio.frequency,
                                             &cng_payload_type_has_changed);
-
-  *should_reset_statistics = cng_payload_type_has_changed;
 
   if (is_cng_payload_type) {
     // Don't do callbacks for DTMF packets.
@@ -278,7 +274,7 @@ int32_t RTPReceiverAudio::InvokeOnInitializeDecoder(
                                           specific_payload.Audio.channels,
                                           specific_payload.Audio.rate)) {
     LOG(LS_ERROR) << "Failed to create decoder for payload type: "
-                  << payload_name << "/" << payload_type;
+                  << payload_name << "/" << static_cast<int>(payload_type);
     return -1;
   }
   return 0;

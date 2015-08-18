@@ -13,6 +13,7 @@
 #include "webrtc/common_types.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h"
+#include "webrtc/modules/remote_bitrate_estimator/remote_bitrate_estimator_single_stream.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_sender.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_rtcp_impl.h"
@@ -30,14 +31,14 @@ class TestTransport : public Transport {
     rtcp_receiver_(rtcp_receiver) {
   }
 
-  virtual int SendPacket(int /*channel*/,
-                         const void* /*data*/,
-                         size_t /*len*/) OVERRIDE {
+  int SendPacket(int /*channel*/,
+                 const void* /*data*/,
+                 size_t /*len*/) override {
     return -1;
   }
-  virtual int SendRTCPPacket(int /*channel*/,
-                             const void *packet,
-                             size_t packetLength) OVERRIDE {
+  int SendRTCPPacket(int /*channel*/,
+                     const void* packet,
+                     size_t packetLength) override {
     RTCPUtility::RTCPParserV2 rtcpParser((uint8_t*)packet,
                                          packetLength,
                                          true); // Allow non-compound RTCP
@@ -67,24 +68,22 @@ class RtcpFormatRembTest : public ::testing::Test {
         system_clock_(Clock::GetRealTimeClock()),
         receive_statistics_(ReceiveStatistics::Create(system_clock_)),
         remote_bitrate_observer_(),
-        remote_bitrate_estimator_(
-            RemoteBitrateEstimatorFactory().Create(
-                &remote_bitrate_observer_,
-                system_clock_,
-                kMimdControl,
-                kRemoteBitrateEstimatorMinBitrateBps)) {}
-  virtual void SetUp() OVERRIDE;
-  virtual void TearDown() OVERRIDE;
+        remote_bitrate_estimator_(new RemoteBitrateEstimatorSingleStream(
+            &remote_bitrate_observer_,
+            system_clock_,
+            kRemoteBitrateEstimatorMinBitrateBps)) {}
+  void SetUp() override;
+  void TearDown() override;
 
   OverUseDetectorOptions over_use_detector_options_;
   Clock* system_clock_;
   ModuleRtpRtcpImpl* dummy_rtp_rtcp_impl_;
-  scoped_ptr<ReceiveStatistics> receive_statistics_;
+  rtc::scoped_ptr<ReceiveStatistics> receive_statistics_;
   RTCPSender* rtcp_sender_;
   RTCPReceiver* rtcp_receiver_;
   TestTransport* test_transport_;
   MockRemoteBitrateObserver remote_bitrate_observer_;
-  scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
+  rtc::scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
 };
 
 void RtcpFormatRembTest::SetUp() {
@@ -94,9 +93,10 @@ void RtcpFormatRembTest::SetUp() {
   configuration.clock = system_clock_;
   configuration.remote_bitrate_estimator = remote_bitrate_estimator_.get();
   dummy_rtp_rtcp_impl_ = new ModuleRtpRtcpImpl(configuration);
-  rtcp_sender_ =
-      new RTCPSender(0, false, system_clock_, receive_statistics_.get());
-  rtcp_receiver_ = new RTCPReceiver(0, system_clock_, dummy_rtp_rtcp_impl_);
+  rtcp_sender_ = new RTCPSender(0, false, system_clock_,
+                                receive_statistics_.get(), NULL);
+  rtcp_receiver_ = new RTCPReceiver(0, system_clock_, false, NULL, NULL, NULL,
+                                    dummy_rtp_rtcp_impl_);
   test_transport_ = new TestTransport(rtcp_receiver_);
 
   EXPECT_EQ(0, rtcp_sender_->RegisterSendTransport(test_transport_));

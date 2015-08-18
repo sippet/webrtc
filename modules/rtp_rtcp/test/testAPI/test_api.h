@@ -9,6 +9,7 @@
  */
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/rtp_rtcp/interface/receive_statistics.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
@@ -16,7 +17,6 @@
 #include "webrtc/modules/rtp_rtcp/interface/rtp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 
@@ -35,10 +35,8 @@ class LoopBackTransport : public webrtc::Transport {
                      RtpReceiver* receiver,
                      ReceiveStatistics* receive_statistics);
   void DropEveryNthPacket(int n);
-  virtual int SendPacket(int channel, const void* data, size_t len) OVERRIDE;
-  virtual int SendRTCPPacket(int channel,
-                             const void* data,
-                             size_t len) OVERRIDE;
+  int SendPacket(int channel, const void* data, size_t len) override;
+  int SendRTCPPacket(int channel, const void* data, size_t len) override;
 
  private:
   int count_;
@@ -51,10 +49,10 @@ class LoopBackTransport : public webrtc::Transport {
 
 class TestRtpReceiver : public NullRtpData {
  public:
-  virtual int32_t OnReceivedPayloadData(
+  int32_t OnReceivedPayloadData(
       const uint8_t* payload_data,
       const size_t payload_size,
-      const webrtc::WebRtcRTPHeader* rtp_header) OVERRIDE;
+      const webrtc::WebRtcRTPHeader* rtp_header) override;
 
   const uint8_t* payload_data() const { return payload_data_; }
   size_t payload_size() const { return payload_size_; }

@@ -142,10 +142,10 @@ void MediaOptimization::Reset() {
 
 void MediaOptimization::SetEncodingData(VideoCodecType send_codec_type,
                                         int32_t max_bit_rate,
-                                        uint32_t frame_rate,
                                         uint32_t target_bitrate,
                                         uint16_t width,
                                         uint16_t height,
+                                        uint32_t frame_rate,
                                         int num_layers,
                                         int32_t mtu) {
   CriticalSectionScoped lock(crit_sect_.get());
@@ -214,7 +214,6 @@ uint32_t MediaOptimization::SetTargetRates(
   float target_bitrate_kbps = static_cast<float>(target_bitrate) / 1000.0f;
   loss_prot_logic_->UpdateBitRate(target_bitrate_kbps);
   loss_prot_logic_->UpdateRtt(round_trip_time_ms);
-  loss_prot_logic_->UpdateResidualPacketLoss(static_cast<float>(fraction_lost));
 
   // Get frame rate for encoder: this is the actual/sent frame rate.
   float actual_frame_rate = SentFrameRateInternal();
@@ -246,7 +245,7 @@ uint32_t MediaOptimization::SetTargetRates(
 
   // Update protection settings, when applicable.
   float sent_video_rate_kbps = 0.0f;
-  if (selected_method) {
+  if (loss_prot_logic_->SelectedType() != kNone) {
     // Update protection method with content metrics.
     selected_method->UpdateContentMetrics(content_->ShortTermAvgData());
 
@@ -318,18 +317,9 @@ uint32_t MediaOptimization::SetTargetRates(
   return target_bit_rate_;
 }
 
-void MediaOptimization::EnableProtectionMethod(bool enable,
-                                               VCMProtectionMethodEnum method) {
+void MediaOptimization::SetProtectionMethod(VCMProtectionMethodEnum method) {
   CriticalSectionScoped lock(crit_sect_.get());
-  bool updated = false;
-  if (enable) {
-    updated = loss_prot_logic_->SetMethod(method);
-  } else {
-    loss_prot_logic_->RemoveMethod(method);
-  }
-  if (updated) {
-    loss_prot_logic_->UpdateMethod();
-  }
+  loss_prot_logic_->SetMethod(method);
 }
 
 uint32_t MediaOptimization::InputFrameRate() {
@@ -636,8 +626,9 @@ void MediaOptimization::ProcessIncomingFrameRate(int64_t now) {
     }
   }
   if (num > 1) {
-    const int64_t diff = now - incoming_frame_times_[num - 1];
-    incoming_frame_rate_ = 1.0;
+    const int64_t diff =
+        incoming_frame_times_[0] - incoming_frame_times_[num - 1];
+    incoming_frame_rate_ = 0.0;  // No frame rate estimate available.
     if (diff > 0) {
       incoming_frame_rate_ = nr_of_frames * 1000.0f / static_cast<float>(diff);
     }

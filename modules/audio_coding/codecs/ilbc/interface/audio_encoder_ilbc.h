@@ -11,44 +11,57 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_CODECS_ILBC_INTERFACE_AUDIO_ENCODER_ILBC_H_
 #define WEBRTC_MODULES_AUDIO_CODING_CODECS_ILBC_INTERFACE_AUDIO_ENCODER_ILBC_H_
 
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
+#include "webrtc/modules/audio_coding/codecs/audio_encoder_mutable_impl.h"
 #include "webrtc/modules/audio_coding/codecs/ilbc/interface/ilbc.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 
-class AudioEncoderIlbc : public AudioEncoder {
+class AudioEncoderIlbc final : public AudioEncoder {
  public:
   struct Config {
     Config() : payload_type(102), frame_size_ms(30) {}
+    bool IsOk() const;
 
     int payload_type;
-    int frame_size_ms;
+    int frame_size_ms;  // Valid values are 20, 30, 40, and 60 ms.
+    // Note that frame size 40 ms produces encodings with two 20 ms frames in
+    // them, and frame size 60 ms consists of two 30 ms frames.
   };
 
   explicit AudioEncoderIlbc(const Config& config);
-  virtual ~AudioEncoderIlbc();
+  ~AudioEncoderIlbc() override;
 
-  virtual int sample_rate_hz() const OVERRIDE;
-  virtual int num_channels() const OVERRIDE;
-  virtual int Num10MsFramesInNextPacket() const OVERRIDE;
-  virtual int Max10MsFramesInAPacket() const OVERRIDE;
-
- protected:
-  virtual bool EncodeInternal(uint32_t timestamp,
-                              const int16_t* audio,
-                              size_t max_encoded_bytes,
-                              uint8_t* encoded,
-                              EncodedInfo* info) OVERRIDE;
+  int SampleRateHz() const override;
+  int NumChannels() const override;
+  size_t MaxEncodedBytes() const override;
+  int Num10MsFramesInNextPacket() const override;
+  int Max10MsFramesInAPacket() const override;
+  int GetTargetBitrate() const override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
-  static const int kMaxSamplesPerPacket = 240;
+  size_t RequiredOutputSizeBytes() const;
+
+  static const int kMaxSamplesPerPacket = 480;
   const int payload_type_;
   const int num_10ms_frames_per_packet_;
   int num_10ms_frames_buffered_;
   uint32_t first_timestamp_in_buffer_;
   int16_t input_buffer_[kMaxSamplesPerPacket];
   IlbcEncoderInstance* encoder_;
+};
+
+struct CodecInst;
+
+class AudioEncoderMutableIlbc
+    : public AudioEncoderMutableImpl<AudioEncoderIlbc> {
+ public:
+  explicit AudioEncoderMutableIlbc(const CodecInst& codec_inst);
 };
 
 }  // namespace webrtc

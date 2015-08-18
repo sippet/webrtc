@@ -46,7 +46,7 @@ class TransportChannel : public sigslot::has_slots<> {
   explicit TransportChannel(const std::string& content_name, int component)
       : content_name_(content_name),
         component_(component),
-        readable_(false), writable_(false) {}
+        readable_(false), writable_(false), receiving_(false) {}
   virtual ~TransportChannel() {}
 
   // TODO(guoweis) - Make this pure virtual once all subclasses of
@@ -67,10 +67,12 @@ class TransportChannel : public sigslot::has_slots<> {
   // TransportManager.
   bool readable() const { return readable_; }
   bool writable() const { return writable_; }
+  bool receiving() const { return receiving_; }
   sigslot::signal1<TransportChannel*> SignalReadableState;
   sigslot::signal1<TransportChannel*> SignalWritableState;
   // Emitted when the TransportChannel's ability to send has changed.
   sigslot::signal1<TransportChannel*> SignalReadyToSend;
+  sigslot::signal1<TransportChannel*> SignalReceivingState;
 
   // Attempts to send the given packet.  The return value is < 0 on failure.
   // TODO: Remove the default argument once channel code is updated.
@@ -81,6 +83,9 @@ class TransportChannel : public sigslot::has_slots<> {
   // Sets a socket option on this channel.  Note that not all options are
   // supported by all transport types.
   virtual int SetOption(rtc::Socket::Option opt, int value) = 0;
+  // TODO(pthatcher): Once Chrome's MockTransportChannel implments
+  // this, remove the default implementation.
+  virtual bool GetOption(rtc::Socket::Option opt, int* value) { return false; }
 
   // Returns the most recent error that occurred on this channel.
   virtual int GetError() = 0;
@@ -97,8 +102,11 @@ class TransportChannel : public sigslot::has_slots<> {
   // Sets up the ciphers to use for DTLS-SRTP.
   virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers) = 0;
 
-  // Finds out which DTLS-SRTP cipher was negotiated
+  // Finds out which DTLS-SRTP cipher was negotiated.
   virtual bool GetSrtpCipher(std::string* cipher) = 0;
+
+  // Finds out which DTLS cipher was negotiated.
+  virtual bool GetSslCipher(std::string* cipher) = 0;
 
   // Gets a copy of the local SSL identity, owned by the caller.
   virtual bool GetLocalIdentity(rtc::SSLIdentity** identity) const = 0;
@@ -136,6 +144,9 @@ class TransportChannel : public sigslot::has_slots<> {
   // Sets the writable state, signaling if necessary.
   void set_writable(bool writable);
 
+  // Sets the receiving state, signaling if necessary.
+  void set_receiving(bool receiving);
+
 
  private:
   // Used mostly for debugging.
@@ -143,8 +154,9 @@ class TransportChannel : public sigslot::has_slots<> {
   int component_;
   bool readable_;
   bool writable_;
+  bool receiving_;
 
-  DISALLOW_EVIL_CONSTRUCTORS(TransportChannel);
+  DISALLOW_COPY_AND_ASSIGN(TransportChannel);
 };
 
 }  // namespace cricket

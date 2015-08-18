@@ -10,6 +10,7 @@
 
 #include "webrtc/common_audio/lapped_transform.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -24,7 +25,9 @@ class NoopCallback : public webrtc::LappedTransform::Callback {
   NoopCallback() : block_num_(0) {}
 
   virtual void ProcessAudioBlock(const complex<float>* const* in_block,
-                                 int in_channels, int frames, int out_channels,
+                                 int in_channels,
+                                 int frames,
+                                 int out_channels,
                                  complex<float>* const* out_block) {
     CHECK_EQ(in_channels, out_channels);
     for (int i = 0; i < out_channels; ++i) {
@@ -46,15 +49,18 @@ class FftCheckerCallback : public webrtc::LappedTransform::Callback {
   FftCheckerCallback() : block_num_(0) {}
 
   virtual void ProcessAudioBlock(const complex<float>* const* in_block,
-                                 int in_channels, int frames, int out_channels,
+                                 int in_channels,
+                                 int frames,
+                                 int out_channels,
                                  complex<float>* const* out_block) {
     CHECK_EQ(in_channels, out_channels);
 
-    float full_length = (frames - 1) * 2;
+    int full_length = (frames - 1) * 2;
     ++block_num_;
 
     if (block_num_ > 0) {
-      ASSERT_NEAR(in_block[0][0].real(), full_length, 1e-5f);
+      ASSERT_NEAR(in_block[0][0].real(), static_cast<float>(full_length),
+                  1e-5f);
       ASSERT_NEAR(in_block[0][0].imag(), 0.0f, 1e-5f);
       for (int i = 1; i < frames; ++i) {
         ASSERT_NEAR(in_block[0][i].real(), 0.0f, 1e-5f);
@@ -87,9 +93,14 @@ TEST(LappedTransformTest, Windowless) {
   const int kChannels = 3;
   const int kChunkLength = 512;
   const int kBlockLength = 64;
-  const int kShiftAmount = 32;
+  const int kShiftAmount = 64;
   NoopCallback noop;
-  LappedTransform trans(kChannels, kChannels, kChunkLength, nullptr,
+
+  // Rectangular window.
+  float window[kBlockLength];
+  std::fill(window, &window[kBlockLength], 1.0f);
+
+  LappedTransform trans(kChannels, kChannels, kChunkLength, window,
                         kBlockLength, kShiftAmount, &noop);
   float in_buffer[kChannels][kChunkLength];
   float* in_chunk[kChannels];
@@ -121,11 +132,10 @@ TEST(LappedTransformTest, IdentityProcessor) {
   const int kBlockLength = 64;
   const int kShiftAmount = 32;
   NoopCallback noop;
-  float window[kBlockLength];
-  float* window_ptr = window;
 
   // Identity window for |overlap = block_size / 2|.
-  SetFloatArray(sqrtf(0.5f), 1, kBlockLength, &window_ptr);
+  float window[kBlockLength];
+  std::fill(window, &window[kBlockLength], std::sqrt(0.5f));
 
   LappedTransform trans(1, 1, kChunkLength, window, kBlockLength, kShiftAmount,
                         &noop);
@@ -152,7 +162,12 @@ TEST(LappedTransformTest, Callbacks) {
   const int kChunkLength = 512;
   const int kBlockLength = 64;
   FftCheckerCallback call;
-  LappedTransform trans(1, 1, kChunkLength, nullptr, kBlockLength,
+
+  // Rectangular window.
+  float window[kBlockLength];
+  std::fill(window, &window[kBlockLength], 1.0f);
+
+  LappedTransform trans(1, 1, kChunkLength, window, kBlockLength,
                         kBlockLength, &call);
   float in_buffer[kChunkLength];
   float* in_chunk = in_buffer;
@@ -167,5 +182,27 @@ TEST(LappedTransformTest, Callbacks) {
   ASSERT_EQ(kChunkLength / kBlockLength, call.block_num());
 }
 
-}  // namespace webrtc
+TEST(LappedTransformTest, chunk_length) {
+  const int kBlockLength = 64;
+  FftCheckerCallback call;
+  const float window[kBlockLength] = {};
 
+  // Make sure that chunk_length returns the same value passed to the
+  // LappedTransform constructor.
+  {
+    const int kExpectedChunkLength = 512;
+    const LappedTransform trans(1, 1, kExpectedChunkLength, window,
+                                kBlockLength, kBlockLength, &call);
+
+    EXPECT_EQ(kExpectedChunkLength, trans.chunk_length());
+  }
+  {
+    const int kExpectedChunkLength = 160;
+    const LappedTransform trans(1, 1, kExpectedChunkLength, window,
+                                kBlockLength, kBlockLength, &call);
+
+    EXPECT_EQ(kExpectedChunkLength, trans.chunk_length());
+  }
+}
+
+}  // namespace webrtc

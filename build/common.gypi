@@ -41,7 +41,9 @@
       'webrtc_vp8_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp8',
       'webrtc_vp9_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp9',
       'include_opus%': 1,
+      'opus_dir%': '<(DEPTH)/third_party/opus',
       'include_g729%': 1,
+      'g729_dir%': '<(DEPTH)/third_party/g729',
     },
     'build_with_chromium%': '<(build_with_chromium)',
     'build_with_libjingle%': '<(build_with_libjingle)',
@@ -74,11 +76,6 @@
     # Remote bitrate estimator logging/plotting.
     'enable_bwe_test_logging%': 0,
 
-    # Adds video support to dependencies shared by voice and video engine.
-    # This should normally be enabled; the intended use is to disable only
-    # when building voice engine exclusively.
-    'enable_video%': 1,
-
     # Selects fixed-point code where possible.
     'prefer_fixed_point%': 0,
 
@@ -90,11 +87,17 @@
     'enable_protobuf%': 1,
 
     # Disable these to not build components which can be externally provided.
+    'build_expat%': 1,
+    'build_icu%': 1,
     'build_json%': 1,
     'build_libjpeg%': 1,
-    'build_libyuv%': 1,
     'build_libvpx%': 1,
+    'build_libyuv%': 1,
+    'build_openmax_dl%': 1,
+    'build_opus%': 1,
     'build_ssl%': 1,
+    'build_vp9%': 1,
+    'build_g729%': 1,
 
     # Disable by default
     'have_dbus_glib%': 0,
@@ -102,12 +105,11 @@
     # Enable to use the Mozilla internal settings.
     'build_with_mozilla%': 0,
 
+    # Make it possible to provide custom locations for some libraries.
+    'libvpx_dir%': '<(DEPTH)/third_party/libvpx',
     'libyuv_dir%': '<(DEPTH)/third_party/libyuv',
-
-    # Define MIPS architecture variant, MIPS DSP variant and MIPS FPU
-    # This may be subject to change in accordance to Chromium's MIPS flags
-    'mips_dsp_rev%': 0,
-    'mips_fpu%' : 1,
+    'opus_dir%': '<(opus_dir)',
+    'g729_dir%': '<(g729_dir)',
 
     # Use Java based audio layer as default for Android.
     # Change this setting to 1 to use Open SL audio instead.
@@ -124,6 +126,13 @@
     # enable schannel on windows.
     'use_legacy_ssl_defaults%': 0,
 
+    # Determines whether NEON code will be built.
+    'build_with_neon%': 0,
+
+    # Enable this to use HW H.264 encoder/decoder on iOS/Mac PeerConnections.
+    # Enabling this may break interop with Android clients that support H264.
+    'use_objc_h264%': 0,
+
     'conditions': [
       ['build_with_chromium==1', {
         # Exclude pulse audio on Chromium since its prerequisites don't require
@@ -132,7 +141,6 @@
 
         # Exclude internal ADM since Chromium uses its own IO handling.
         'include_internal_audio_device%': 0,
-
       }, {  # Settings for the standalone (not-in-Chromium) build.
         # TODO(andrew): For now, disable the Chrome plugins, which causes a
         # flood of chromium-style warnings. Investigate enabling them:
@@ -156,6 +164,9 @@
       ['target_arch=="arm" or target_arch=="arm64"', {
         'prefer_fixed_point%': 1,
       }],
+      ['(target_arch=="arm" and (arm_neon==1 or arm_neon_optional==1)) or target_arch=="arm64"', {
+        'build_with_neon%': 1,
+      }],
       ['OS!="ios" and (target_arch!="arm" or arm_version>=7) and target_arch!="mips64el"', {
         'rtc_use_openmax_dl%': 1,
       }, {
@@ -164,11 +175,6 @@
     ], # conditions
   },
   'target_defaults': {
-    'include_dirs': [
-      # To include the top-level directory when building in Chrome, so we can
-      # use full paths (e.g. headers inside testing/ or third_party/).
-      '<(DEPTH)',
-    ],
     'conditions': [
       ['restrict_webrtc_logging==1', {
         'defines': ['WEBRTC_RESTRICT_LOGGING',],
@@ -190,8 +196,25 @@
       ['rtc_relative_path==1', {
         'defines': ['EXPAT_RELATIVE_PATH',],
       }],
-      ['enable_video==1', {
-        'defines': ['WEBRTC_MODULE_UTILITY_VIDEO',],
+      ['os_posix==1', {
+        'configurations': {
+          'Debug_Base': {
+            'defines': [
+              # Chromium's build/common.gypi defines _DEBUG for all posix
+              # _except_ for ios & mac.  The size of data types such as
+              # pthread_mutex_t varies between release and debug builds
+              # and is controlled via this flag.  Since we now share code
+              # between base/base.gyp and build/common.gypi (this file),
+              # both gyp(i) files, must consistently set this flag uniformly
+              # or else we'll run in to hard-to-figure-out problems where
+              # one compilation unit uses code from another but expects
+              # differently laid out types.
+              # For WebRTC, we want it there as well, because ASSERT and
+              # friends trigger off of it.
+              '_DEBUG',
+            ],
+          },
+        },
       }],
       ['build_with_chromium==1', {
         'defines': [
@@ -200,26 +223,23 @@
           'LOGGING_INSIDE_WEBRTC',
         ],
         'include_dirs': [
-          # overrides must be included first as that is the mechanism for
-          # selecting the override headers in Chromium.
+          # Include the top-level directory when building in Chrome, so we can
+          # use full paths (e.g. headers inside testing/ or third_party/).
+          '<(DEPTH)',
+          # The overrides must be included before the WebRTC root as that's the
+          # mechanism for selecting the override headers in Chromium.
           '../overrides',
-          # Allow includes to be prefixed with webrtc/ in case it is not an
-          # immediate subdirectory of <(DEPTH).
+          # The WebRTC root is needed to allow includes in the WebRTC code base
+          # to be prefixed with webrtc/.
           '../..',
         ],
       }, {
+         # Include the top-level dir so the WebRTC code can use full paths.
+        'include_dirs': [
+          '../..',
+        ],
         'conditions': [
           ['os_posix==1', {
-            'configurations': {
-              'Debug_Base': {
-                'defines': [
-                  # Chromium's build/common.gypi defines this for all posix
-                  # _except_ for ios & mac.  We want it there as well, e.g.
-                  # because ASSERT and friends trigger off of it.
-                  '_DEBUG',
-                ],
-              },
-            },
             'conditions': [
               # -Wextra is currently disabled in Chromium's common.gypi. Enable
               # for targets that can handle it. For Android/arm64 right now
@@ -246,6 +266,7 @@
           }],
           ['clang==1', {
             'cflags': [
+              '-Wimplicit-fallthrough',
               '-Wthread-safety',
             ],
           }],
@@ -253,13 +274,8 @@
       }],
       ['target_arch=="arm64"', {
         'defines': [
-          'WEBRTC_ARCH_ARM',
-          # TODO(zhongwei) Defining an unique WEBRTC_NEON and
-          # distinguishing ARMv7 NEON and ARM64 NEON by
-          # WEBRTC_ARCH_ARM_V7 and WEBRTC_ARCH_ARM64 should be better.
-
-          # This macro is used to distinguish ARMv7 NEON and ARM64 NEON
-          'WEBRTC_ARCH_ARM64_NEON',
+          'WEBRTC_ARCH_ARM64',
+          'WEBRTC_HAS_NEON',
         ],
       }],
       ['target_arch=="arm"', {
@@ -271,64 +287,39 @@
             'defines': ['WEBRTC_ARCH_ARM_V7',],
             'conditions': [
               ['arm_neon==1', {
-                'defines': ['WEBRTC_ARCH_ARM_NEON',],
+                'defines': ['WEBRTC_HAS_NEON',],
               }],
-              ['arm_neon==0 and OS=="android"', {
-                'defines': ['WEBRTC_DETECT_ARM_NEON',],
+              ['arm_neon==0 and arm_neon_optional==1', {
+                'defines': ['WEBRTC_DETECT_NEON',],
               }],
             ],
           }],
         ],
       }],
-      ['target_arch=="mipsel" and mips_arch_variant!="r6" and android_webview_build==0', {
+      ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
         'defines': [
           'MIPS32_LE',
         ],
         'conditions': [
-          ['mips_fpu==1', {
+          ['mips_float_abi=="hard"', {
             'defines': [
               'MIPS_FPU_LE',
-            ],
-            'cflags': [
-              '-mhard-float',
-            ],
-          }, {
-            'cflags': [
-              '-msoft-float',
             ],
           }],
           ['mips_arch_variant=="r2"', {
             'defines': [
               'MIPS32_R2_LE',
             ],
-            'cflags': [
-              '-mips32r2',
-            ],
-            'cflags_cc': [
-              '-mips32r2',
-            ],
           }],
           ['mips_dsp_rev==1', {
             'defines': [
               'MIPS_DSP_R1_LE',
-            ],
-            'cflags': [
-              '-mdsp',
-            ],
-            'cflags_cc': [
-              '-mdsp',
             ],
           }],
           ['mips_dsp_rev==2', {
             'defines': [
               'MIPS_DSP_R1_LE',
               'MIPS_DSP_R2_LE',
-            ],
-            'cflags': [
-              '-mdspr2',
-            ],
-            'cflags_cc': [
-              '-mdspr2',
             ],
           }],
         ],
@@ -349,6 +340,11 @@
         'defines': [
           'WEBRTC_MAC',
           'WEBRTC_IOS',
+        ],
+      }],
+      ['OS=="ios" and use_objc_h264==1', {
+        'defines': [
+          'WEBRTC_OBJC_H264',
         ],
       }],
       ['OS=="linux"', {
@@ -381,11 +377,6 @@
           'WEBRTC_ANDROID',
          ],
          'conditions': [
-           ['enable_android_opensl==1', {
-             'defines': [
-               'WEBRTC_ANDROID_OPENSLES',
-             ],
-           }],
            ['clang!=1', {
              # The Android NDK doesn't provide optimized versions of these
              # functions. Ensure they are disabled for all compilers.
@@ -397,6 +388,11 @@
              ],
            }],
          ],
+      }],
+      ['include_internal_audio_device==1', {
+        'defines': [
+          'WEBRTC_INCLUDE_INTERNAL_AUDIO_DEVICE',
+        ],
       }],
     ], # conditions
     'direct_dependent_settings': {
@@ -448,13 +444,6 @@
           'defines': [
             'WEBRTC_LINUX',
             'WEBRTC_ANDROID',
-           ],
-           'conditions': [
-             ['enable_android_opensl==1', {
-               'defines': [
-                 'WEBRTC_ANDROID_OPENSLES',
-               ],
-             }]
            ],
         }],
         ['os_posix==1', {

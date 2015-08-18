@@ -11,8 +11,8 @@
 #ifndef WEBRTC_MODULES_AUDIO_PROCESSING_AGC_AGC_MANAGER_DIRECT_H_
 #define WEBRTC_MODULES_AUDIO_PROCESSING_AGC_AGC_MANAGER_DIRECT_H_
 
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_processing/agc/agc.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 
@@ -41,12 +41,17 @@ class AgcManagerDirect {
  public:
   // AgcManagerDirect will configure GainControl internally. The user is
   // responsible for processing the audio using it after the call to Process.
-  AgcManagerDirect(GainControl* gctrl, VolumeCallbacks* volume_callbacks);
+  // The operating range of startup_min_level is [12, 255] and any input value
+  // outside that range will be clamped.
+  AgcManagerDirect(GainControl* gctrl,
+                   VolumeCallbacks* volume_callbacks,
+                   int startup_min_level);
   // Dependency injection for testing. Don't delete |agc| as the memory is owned
   // by the manager.
   AgcManagerDirect(Agc* agc,
                    GainControl* gctrl,
-                   VolumeCallbacks* volume_callbacks);
+                   VolumeCallbacks* volume_callbacks,
+                   int startup_min_level);
   ~AgcManagerDirect();
 
   int Initialize();
@@ -74,7 +79,7 @@ class AgcManagerDirect {
   void UpdateGain();
   void UpdateCompressor();
 
-  scoped_ptr<Agc> agc_;
+  rtc::scoped_ptr<Agc> agc_;
   GainControl* gctrl_;
   VolumeCallbacks* volume_callbacks_;
 
@@ -88,9 +93,10 @@ class AgcManagerDirect {
   bool capture_muted_;
   bool check_volume_on_next_process_;
   bool startup_;
+  int startup_min_level_;
 
-  scoped_ptr<DebugFile> file_preproc_;
-  scoped_ptr<DebugFile> file_postproc_;
+  rtc::scoped_ptr<DebugFile> file_preproc_;
+  rtc::scoped_ptr<DebugFile> file_postproc_;
 };
 
 }  // namespace webrtc

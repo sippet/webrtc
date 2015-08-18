@@ -9,9 +9,9 @@
  */
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 #include "webrtc/test/testsupport/fileutils.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 using ::std::string;
 using ::std::tr1::tuple;
@@ -60,9 +60,9 @@ class OpusFecTest : public TestWithParam<coding_param> {
 
   string in_filename_;
 
-  scoped_ptr<int16_t[]> in_data_;
-  scoped_ptr<int16_t[]> out_data_;
-  scoped_ptr<uint8_t[]> bit_stream_;
+  rtc::scoped_ptr<int16_t[]> in_data_;
+  rtc::scoped_ptr<int16_t[]> out_data_;
+  rtc::scoped_ptr<uint8_t[]> bit_stream_;
 };
 
 void OpusFecTest::SetUp() {
@@ -131,10 +131,10 @@ OpusFecTest::OpusFecTest()
 }
 
 void OpusFecTest::EncodeABlock() {
-  int16_t value = WebRtcOpus_Encode(opus_encoder_,
-                                    &in_data_[data_pointer_],
-                                    block_length_sample_,
-                                    max_bytes_, &bit_stream_[0]);
+  int value = WebRtcOpus_Encode(opus_encoder_,
+                                &in_data_[data_pointer_],
+                                block_length_sample_,
+                                max_bytes_, &bit_stream_[0]);
   EXPECT_GT(value, 0);
 
   encoded_bytes_ = value;
@@ -142,7 +142,7 @@ void OpusFecTest::EncodeABlock() {
 
 void OpusFecTest::DecodeABlock(bool lost_previous, bool lost_current) {
   int16_t audio_type;
-  int16_t value_1 = 0, value_2 = 0;
+  int value_1 = 0, value_2 = 0;
 
   if (lost_previous) {
     // Decode previous frame.
@@ -196,7 +196,7 @@ TEST_P(OpusFecTest, RandomPacketLossTest) {
       EncodeABlock();
 
       // Check if payload has FEC.
-      int16_t fec = WebRtcOpus_PacketHasFec(&bit_stream_[0], encoded_bytes_);
+      int fec = WebRtcOpus_PacketHasFec(&bit_stream_[0], encoded_bytes_);
 
       // If FEC is disabled or the target packet loss rate is set to 0, there
       // should be no FEC in the bit stream.

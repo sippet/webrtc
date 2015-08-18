@@ -10,13 +10,14 @@
   'targets': [
     {
       # Note this library is missing an implementation for the video render.
-      # For that targets must link with 'video_render_module_impl' or
+      # For that targets must link with 'video_render' or
       # 'video_render_module_internal_impl' if they want to compile and use
       # the internal render as the default renderer.
       'target_name': 'video_render_module',
       'type': 'static_library',
       'dependencies': [
         'webrtc_utility',
+        '<(webrtc_root)/common.gyp:webrtc_common',
         '<(webrtc_root)/common_video/common_video.gyp:common_video',
         '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
       ],
@@ -26,17 +27,13 @@
         'i_video_render.h',
         'include/video_render.h',
         'include/video_render_defines.h',
-        'incoming_video_stream.cc',
-        'incoming_video_stream.h',
-        'video_render_frames.cc',
-        'video_render_frames.h',
         'video_render_impl.h',
       ],
     },
     {
       # Default video_render_module implementation that only supports external
       # renders.
-      'target_name': 'video_render_module_impl',
+      'target_name': 'video_render',
       'type': 'static_library',
       'dependencies': [
         'video_render_module',
@@ -56,6 +53,7 @@
           'target_name': 'video_render_module_internal_impl',
           'type': 'static_library',
           'dependencies': [
+            '<(webrtc_root)/common.gyp:webrtc_common',
             'video_render_module',
           ],
           'sources': [
@@ -163,6 +161,7 @@
           'dependencies': [
             'video_render_module_internal_impl',
             'webrtc_utility',
+            '<(webrtc_root)/common.gyp:webrtc_common',
             '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
             '<(webrtc_root)/common_video/common_video.gyp:common_video',
           ],

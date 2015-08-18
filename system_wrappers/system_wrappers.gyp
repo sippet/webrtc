@@ -13,6 +13,7 @@
       'target_name': 'system_wrappers',
       'type': 'static_library',
       'dependencies': [
+        '<(webrtc_root)/common.gyp:webrtc_common',
         '../base/base.gyp:rtc_base_approved',
       ],
       'sources': [
@@ -38,8 +39,6 @@
         'interface/ref_count.h',
         'interface/rtp_to_ntp.h',
         'interface/rw_lock_wrapper.h',
-        'interface/scoped_ptr.h',
-        'interface/scoped_refptr.h',
         'interface/scoped_vector.h',
         'interface/sleep.h',
         'interface/sort.h',
@@ -75,11 +74,11 @@
         'source/data_log_c.cc',
         'source/data_log_no_op.cc',
         'source/event.cc',
-        'source/event_posix.cc',
-        'source/event_posix.h',
+        'source/event_timer_posix.cc',
+        'source/event_timer_posix.h',
+        'source/event_timer_win.cc',
+        'source/event_timer_win.h',
         'source/event_tracer.cc',
-        'source/event_win.cc',
-        'source/event_win.h',
         'source/file_impl.cc',
         'source/file_impl.h',
         'source/logcat_trace_context.cc',
@@ -92,7 +91,6 @@
         'source/rw_lock_posix.h',
         'source/rw_lock_win.cc',
         'source/rw_lock_win.h',
-        'source/set_thread_name_win.h',
         'source/sleep.cc',
         'source/sort.cc',
         'source/tick_util.cc',
@@ -200,6 +198,7 @@
       'target_name': 'field_trial_default',
       'type': 'static_library',
       'sources': [
+        'interface/field_trial_default.h',
         'source/field_trial_default.cc',
       ],
       'dependencies': [

@@ -19,11 +19,10 @@
          '<(webrtc_root)/test/test.gyp:test_support_main',
       ],
       'sources': [
+        'i420_buffer_pool_unittest.cc',
         'i420_video_frame_unittest.cc',
         'libyuv/libyuv_unittest.cc',
         'libyuv/scaler_unittest.cc',
-        'plane_unittest.cc',
-        'texture_video_frame_unittest.cc'
       ],
       # Disable warnings to enable Win64 build, issue 1323.
       'msvs_disabled_warnings': [

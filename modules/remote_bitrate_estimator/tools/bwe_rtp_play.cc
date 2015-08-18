@@ -11,11 +11,11 @@
 #include <stdio.h>
 
 #include "webrtc/base/format_macros.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "webrtc/modules/remote_bitrate_estimator/tools/bwe_rtp.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_payload_registry.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/rtp_file_reader.h"
 
 class Observer : public webrtc::RemoteBitrateObserver {
@@ -38,15 +38,6 @@ class Observer : public webrtc::RemoteBitrateObserver {
 };
 
 int main(int argc, char** argv) {
-  if (argc < 4) {
-    printf("Usage: bwe_rtp_play <extension type> <extension id> "
-           "<input_file.rtp>\n");
-    printf("<extension type> can either be:\n"
-           "  abs for absolute send time or\n"
-           "  tsoffset for timestamp offset.\n"
-           "<extension id> is the id associated with the extension.\n");
-    return -1;
-  }
   webrtc::test::RtpFileReader* reader;
   webrtc::RemoteBitrateEstimator* estimator;
   webrtc::RtpHeaderParser* parser;
@@ -57,9 +48,9 @@ int main(int argc, char** argv) {
                                   &parser, &estimator, &estimator_used)) {
     return -1;
   }
-  webrtc::scoped_ptr<webrtc::test::RtpFileReader> rtp_reader(reader);
-  webrtc::scoped_ptr<webrtc::RtpHeaderParser> rtp_parser(parser);
-  webrtc::scoped_ptr<webrtc::RemoteBitrateEstimator> rbe(estimator);
+  rtc::scoped_ptr<webrtc::test::RtpFileReader> rtp_reader(reader);
+  rtc::scoped_ptr<webrtc::RtpHeaderParser> rtp_parser(parser);
+  rtc::scoped_ptr<webrtc::RemoteBitrateEstimator> rbe(estimator);
 
   // Process the file.
   int packet_counter = 0;
@@ -76,23 +67,24 @@ int main(int argc, char** argv) {
   packet.time_ms = packet.time_ms - first_rtp_time_ms;
   while (true) {
     if (next_rtp_time_ms <= clock.TimeInMilliseconds()) {
-      webrtc::RTPHeader header;
-      parser->Parse(packet.data, packet.length, &header);
-      if (header.extension.hasAbsoluteSendTime)
-        ++abs_send_time_count;
-      if (header.extension.hasTransmissionTimeOffset)
-        ++ts_offset_count;
-      size_t packet_length = packet.length;
-      // Some RTP dumps only include the header, in which case packet.length
-      // is equal to the header length. In those cases packet.original_length
-      // usually contains the original packet length.
-      if (packet.original_length > 0) {
-        packet_length = packet.original_length;
+      if (!parser->IsRtcp(packet.data, packet.length)) {
+        webrtc::RTPHeader header;
+        parser->Parse(packet.data, packet.length, &header);
+        if (header.extension.hasAbsoluteSendTime)
+          ++abs_send_time_count;
+        if (header.extension.hasTransmissionTimeOffset)
+          ++ts_offset_count;
+        size_t packet_length = packet.length;
+        // Some RTP dumps only include the header, in which case packet.length
+        // is equal to the header length. In those cases packet.original_length
+        // usually contains the original packet length.
+        if (packet.original_length > 0) {
+          packet_length = packet.original_length;
+        }
+        rbe->IncomingPacket(clock.TimeInMilliseconds(),
+                            packet_length - header.headerLength, header, true);
+        ++packet_counter;
       }
-      rbe->IncomingPacket(clock.TimeInMilliseconds(),
-                          packet_length - header.headerLength,
-                          header);
-      ++packet_counter;
       if (!rtp_reader->NextPacket(&packet)) {
         break;
       }
