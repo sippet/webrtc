@@ -74,11 +74,13 @@ class VideoCodingModuleImpl : public VideoCodingModule {
   VideoCodingModuleImpl(Clock* clock,
                         EventFactory* event_factory,
                         bool owns_event_factory,
-                        VideoEncoderRateObserver* encoder_rate_observer)
+                        VideoEncoderRateObserver* encoder_rate_observer,
+                        VCMQMSettingsCallback* qm_settings_callback)
       : VideoCodingModule(),
         sender_(new vcm::VideoSender(clock,
                                      &post_encode_callback_,
-                                     encoder_rate_observer)),
+                                     encoder_rate_observer,
+                                     qm_settings_callback)),
         receiver_(new vcm::VideoReceiver(clock, event_factory)),
         own_event_factory_(owns_event_factory ? event_factory : NULL) {}
 
@@ -103,8 +105,6 @@ class VideoCodingModuleImpl : public VideoCodingModule {
       return sender_return;
     return receiver_return;
   }
-
-  int32_t InitializeSender() override { return sender_->InitializeSender(); }
 
   int32_t RegisterSendCodec(const VideoCodec* sendCodec,
                             uint32_t numberOfCores,
@@ -161,11 +161,6 @@ class VideoCodingModuleImpl : public VideoCodingModule {
     return sender_->RegisterSendStatisticsCallback(sendStats);
   }
 
-  int32_t RegisterVideoQMCallback(
-      VCMQMSettingsCallback* videoQMSettings) override {
-    return sender_->RegisterVideoQMCallback(videoQMSettings);
-  }
-
   int32_t RegisterProtectionCallback(
       VCMProtectionCallback* protection) override {
     return sender_->RegisterProtectionCallback(protection);
@@ -173,11 +168,13 @@ class VideoCodingModuleImpl : public VideoCodingModule {
 
   int32_t SetVideoProtection(VCMVideoProtection videoProtection,
                              bool enable) override {
-    sender_->SetVideoProtection(enable, videoProtection);
+    // TODO(pbos): Remove enable from receive-side protection modes as well.
+    if (enable)
+      sender_->SetVideoProtection(videoProtection);
     return receiver_->SetVideoProtection(videoProtection, enable);
   }
 
-  int32_t AddVideoFrame(const I420VideoFrame& videoFrame,
+  int32_t AddVideoFrame(const VideoFrame& videoFrame,
                         const VideoContentMetrics* contentMetrics,
                         const CodecSpecificInfo* codecSpecificInfo) override {
     return sender_->AddVideoFrame(
@@ -196,24 +193,11 @@ class VideoCodingModuleImpl : public VideoCodingModule {
     return sender_->SentFrameCount(&frameCount);
   }
 
-  int StartDebugRecording(const char* file_name_utf8) override {
-    return sender_->StartDebugRecording(file_name_utf8);
-  }
-
-  int StopDebugRecording() override {
-    sender_->StopDebugRecording();
-    return VCM_OK;
-  }
-
   void SuspendBelowMinBitrate() override {
     return sender_->SuspendBelowMinBitrate();
   }
 
   bool VideoSuspended() const override { return sender_->VideoSuspended(); }
-
-  int32_t InitializeReceiver() override {
-    return receiver_->InitializeReceiver();
-  }
 
   int32_t RegisterReceiveCodec(const VideoCodec* receiveCodec,
                                int32_t numberOfCores,
@@ -359,10 +343,11 @@ int32_t VideoCodingModule::Codec(VideoCodecType codecType, VideoCodec* codec) {
 }
 
 VideoCodingModule* VideoCodingModule::Create(
-    VideoEncoderRateObserver* encoder_rate_observer) {
-  return new VideoCodingModuleImpl(Clock::GetRealTimeClock(),
-                                   new EventFactoryImpl, true,
-                                   encoder_rate_observer);
+    Clock* clock,
+    VideoEncoderRateObserver* encoder_rate_observer,
+    VCMQMSettingsCallback* qm_settings_callback) {
+  return new VideoCodingModuleImpl(clock, new EventFactoryImpl, true,
+                                   encoder_rate_observer, qm_settings_callback);
 }
 
 VideoCodingModule* VideoCodingModule::Create(
@@ -370,7 +355,8 @@ VideoCodingModule* VideoCodingModule::Create(
     EventFactory* event_factory) {
   assert(clock);
   assert(event_factory);
-  return new VideoCodingModuleImpl(clock, event_factory, false, nullptr);
+  return new VideoCodingModuleImpl(clock, event_factory, false, nullptr,
+                                   nullptr);
 }
 
 void VideoCodingModule::Destroy(VideoCodingModule* module) {

@@ -14,11 +14,19 @@
 #include <string>
 #include <vector>
 
+// Hack: Define+undefine int64 and uint64 to avoid typedef conflict with NSS.
+// TODO(kjellander): Remove when webrtc:4497 is completed.
+#define uint64 foo_uint64
+#define int64 foo_int64
 #include "nspr.h"
+#undef uint64
+#undef int64
+
 #include "nss.h"
 #include "secmodt.h"
 
 #include "webrtc/base/buffer.h"
+#include "webrtc/base/criticalsection.h"
 #include "webrtc/base/nssidentity.h"
 #include "webrtc/base/ssladapter.h"
 #include "webrtc/base/sslstreamadapter.h"
@@ -29,7 +37,7 @@ namespace rtc {
 // Singleton
 class NSSContext {
  public:
-  NSSContext() {}
+  explicit NSSContext(PK11SlotInfo* slot) : slot_(slot) {}
   ~NSSContext() {
   }
 
@@ -44,7 +52,7 @@ class NSSContext {
 
  private:
   PK11SlotInfo *slot_;                    // The PKCS-11 slot
-  static bool initialized;                // Was this initialized?
+  static GlobalLockPod lock;              // To protect the global context
   static NSSContext *global_nss_context;  // The global context
 };
 
@@ -83,7 +91,8 @@ class NSSStreamAdapter : public SSLStreamAdapterHelper {
   static bool HaveDtls();
   static bool HaveDtlsSrtp();
   static bool HaveExporter();
-  static std::string GetDefaultSslCipher();
+  static std::string GetDefaultSslCipher(SSLProtocolVersion version,
+                                         KeyType key_type);
 
  protected:
   // Override SSLStreamAdapter

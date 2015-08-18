@@ -99,6 +99,9 @@ void VCMPacket::Reset() {
 }
 
 void VCMPacket::CopyCodecSpecifics(const RTPVideoHeader& videoHeader) {
+  if (markerBit) {
+    codecSpecificHeader.rotation = videoHeader.rotation;
+  }
   switch (videoHeader.codec) {
     case kRtpVideoVp8:
       // Handle all packets within a frame as depending on the previous packet
@@ -115,12 +118,24 @@ void VCMPacket::CopyCodecSpecifics(const RTPVideoHeader& videoHeader) {
 
       codec = kVideoCodecVP8;
       return;
+    case kRtpVideoVp9:
+      if (isFirstPacket && markerBit)
+        completeNALU = kNaluComplete;
+      else if (isFirstPacket)
+        completeNALU = kNaluStart;
+      else if (markerBit)
+        completeNALU = kNaluEnd;
+      else
+        completeNALU = kNaluIncomplete;
+
+      codec = kVideoCodecVP9;
+      return;
     case kRtpVideoH264:
       isFirstPacket = videoHeader.isFirstPacket;
       if (isFirstPacket)
         insertStartCode = true;
 
-      if (videoHeader.codecHeader.H264.single_nalu) {
+      if (isFirstPacket && markerBit) {
         completeNALU = kNaluComplete;
       } else if (isFirstPacket) {
         completeNALU = kNaluStart;

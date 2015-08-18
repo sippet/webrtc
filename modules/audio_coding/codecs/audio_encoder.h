@@ -58,16 +58,15 @@ class AudioEncoder {
 
   // Accepts one 10 ms block of input audio (i.e., sample_rate_hz() / 100 *
   // num_channels() samples). Multi-channel audio must be sample-interleaved.
-  // The encoder produces zero or more bytes of output in |encoded|,
-  // and provides additional encoding information in |info|.
+  // The encoder produces zero or more bytes of output in |encoded| and
+  // returns additional encoding information.
   // The caller is responsible for making sure that |max_encoded_bytes| is
   // not smaller than the number of bytes actually produced by the encoder.
-  void Encode(uint32_t rtp_timestamp,
-              const int16_t* audio,
-              size_t num_samples_per_channel,
-              size_t max_encoded_bytes,
-              uint8_t* encoded,
-              EncodedInfo* info);
+  EncodedInfo Encode(uint32_t rtp_timestamp,
+                     const int16_t* audio,
+                     size_t num_samples_per_channel,
+                     size_t max_encoded_bytes,
+                     uint8_t* encoded);
 
   // Return the input sample rate in Hz and the number of input channels.
   // These are constants set at instantiation time.
@@ -97,6 +96,11 @@ class AudioEncoder {
   // Num10MsFramesInNextPacket().
   virtual int Max10MsFramesInAPacket() const = 0;
 
+  // Returns the current target bitrate in bits/s. The value -1 means that the
+  // codec adapts the target automatically, and a current target cannot be
+  // provided.
+  virtual int GetTargetBitrate() const = 0;
+
   // Changes the target bitrate. The implementation is free to alter this value,
   // e.g., if the desired value is outside the valid range.
   virtual void SetTargetBitrate(int bits_per_second) {}
@@ -106,13 +110,43 @@ class AudioEncoder {
   // coding efforts, such as FEC.
   virtual void SetProjectedPacketLossRate(double fraction) {}
 
- protected:
-  virtual void EncodeInternal(uint32_t rtp_timestamp,
-                              const int16_t* audio,
-                              size_t max_encoded_bytes,
-                              uint8_t* encoded,
-                              EncodedInfo* info) = 0;
+  // This is the encode function that the inherited classes must implement. It
+  // is called from Encode in the base class.
+  virtual EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                                     const int16_t* audio,
+                                     size_t max_encoded_bytes,
+                                     uint8_t* encoded) = 0;
 };
 
+class AudioEncoderMutable : public AudioEncoder {
+ public:
+  enum Application { kApplicationSpeech, kApplicationAudio };
+
+  // Discards unprocessed audio data.
+  virtual void Reset() = 0;
+
+  // Enables codec-internal FEC, if the implementation supports it.
+  virtual bool SetFec(bool enable) = 0;
+
+  // Enables or disables codec-internal VAD/DTX, if the implementation supports
+  // it.
+  virtual bool SetDtx(bool enable) = 0;
+
+  // Sets the application mode. The implementation is free to disregard this
+  // setting.
+  virtual bool SetApplication(Application application) = 0;
+
+  // Sets an upper limit on the payload size produced by the encoder. The
+  // implementation is free to disregard this setting.
+  virtual void SetMaxPayloadSize(int max_payload_size_bytes) = 0;
+
+  // Sets the maximum rate which the codec may not exceed for any packet.
+  virtual void SetMaxRate(int max_rate_bps) = 0;
+
+  // Informs the encoder about the maximum sample rate which the decoder will
+  // use when decoding the bitstream. The implementation is free to disregard
+  // this hint.
+  virtual bool SetMaxPlaybackRate(int frequency_hz) = 0;
+};
 }  // namespace webrtc
 #endif  // WEBRTC_MODULES_AUDIO_CODING_CODECS_AUDIO_ENCODER_H_

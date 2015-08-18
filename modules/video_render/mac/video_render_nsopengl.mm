@@ -89,9 +89,8 @@ int32_t VideoChannelNSOpenGL::GetChannelProperties(float& left, float& top,
     return 0;
 }
 
-int32_t VideoChannelNSOpenGL::RenderFrame(
-  const uint32_t /*streamId*/, I420VideoFrame& videoFrame) {
-
+int32_t VideoChannelNSOpenGL::RenderFrame(const uint32_t /*streamId*/,
+                                          const VideoFrame& videoFrame) {
   _owner->LockAGLCntx();
 
   if(_width != videoFrame.width() ||
@@ -206,8 +205,7 @@ int VideoChannelNSOpenGL::FrameSizeChange(int width, int height, int numberOfStr
     return 0;
 }
 
-int VideoChannelNSOpenGL::DeliverFrame(const I420VideoFrame& videoFrame) {
-
+int VideoChannelNSOpenGL::DeliverFrame(const VideoFrame& videoFrame) {
   _owner->LockAGLCntx();
 
   if (_texture == 0) {
@@ -221,7 +219,7 @@ int VideoChannelNSOpenGL::DeliverFrame(const I420VideoFrame& videoFrame) {
     return -1;
   }
 
-  // Using the I420VideoFrame for YV12: YV12 is YVU; I420 assumes
+  // Using the VideoFrame for YV12: YV12 is YVU; I420 assumes
   // YUV.
   // TODO(mikhal) : Use appropriate functionality.
   // TODO(wu): See if we are using glTexSubImage2D correctly.
@@ -367,8 +365,7 @@ _windowRef( (CocoaRenderView*)windowRef),
 _fullScreen( fullScreen),
 _id( iId),
 _nsglContextCritSec( *CriticalSectionWrapper::CreateCriticalSection()),
-_screenUpdateThread( 0),
-_screenUpdateEvent( 0),
+_screenUpdateEvent(EventTimerWrapper::Create()),
 _nsglContext( 0),
 _nsglFullScreenContext( 0),
 _fullScreenWindow( nil),
@@ -381,8 +378,8 @@ _renderingIsPaused (FALSE),
 _windowRefSuperView(NULL),
 _windowRefSuperViewFrame(NSMakeRect(0,0,0,0))
 {
-    _screenUpdateThread = ThreadWrapper::CreateThread(ScreenUpdateThreadProc, this, kRealtimePriority);
-    _screenUpdateEvent = EventWrapper::Create();
+    _screenUpdateThread = ThreadWrapper::CreateThread(ScreenUpdateThreadProc,
+            this, "ScreenUpdateNSOpenGL");
 }
 
 int VideoRenderNSOpenGL::ChangeWindow(CocoaRenderView* newWindowRef)
@@ -437,6 +434,8 @@ int32_t VideoRenderNSOpenGL::StartRender()
             UnlockAGLCntx();
             return -1;
         }
+
+        _screenUpdateThread->SetPriority(kRealtimePriority);
 
         UnlockAGLCntx();
         return 0;
@@ -658,8 +657,7 @@ VideoRenderNSOpenGL::~VideoRenderNSOpenGL()
     }
 
     // Signal event to exit thread, then delete it
-    ThreadWrapper* tmpPtr = _screenUpdateThread;
-    _screenUpdateThread = NULL;
+    ThreadWrapper* tmpPtr = _screenUpdateThread.release();
 
     if (tmpPtr)
     {
@@ -718,6 +716,7 @@ int VideoRenderNSOpenGL::Init()
     }
 
     _screenUpdateThread->Start();
+    _screenUpdateThread->SetPriority(kRealtimePriority);
 
     // Start the event triggering the render process
     unsigned int monitorFreq = 60;
@@ -865,9 +864,9 @@ int32_t VideoRenderNSOpenGL::GetChannelProperties(const uint16_t streamId,
 int VideoRenderNSOpenGL::StopThread()
 {
 
-    ThreadWrapper* tmpPtr = _screenUpdateThread;
-    WEBRTC_TRACE(kTraceInfo, kTraceVideoRenderer, _id, "%s Stopping thread ", __FUNCTION__, _screenUpdateThread);
-    _screenUpdateThread = NULL;
+    ThreadWrapper* tmpPtr = _screenUpdateThread.release();
+    WEBRTC_TRACE(kTraceInfo, kTraceVideoRenderer, _id,
+                 "%s Stopping thread ", __FUNCTION__, tmpPtr);
 
     if (tmpPtr)
     {

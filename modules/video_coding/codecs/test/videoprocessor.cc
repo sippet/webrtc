@@ -181,17 +181,10 @@ bool VideoProcessorImpl::ProcessFrame(int frame_number) {
   }
   if (frame_reader_->ReadFrame(source_buffer_)) {
     // Copy the source frame to the newly read frame data.
-    int size_y = config_.codec_settings->width * config_.codec_settings->height;
-    int half_width = (config_.codec_settings->width + 1) / 2;
-    int half_height = (config_.codec_settings->height + 1) / 2;
-    int size_uv = half_width * half_height;
-    source_frame_.CreateFrame(size_y, source_buffer_,
-                              size_uv, source_buffer_ + size_y,
-                              size_uv, source_buffer_ + size_y + size_uv,
+    source_frame_.CreateFrame(source_buffer_,
                               config_.codec_settings->width,
                               config_.codec_settings->height,
-                              config_.codec_settings->width,
-                              half_width, half_width);
+                              kVideoRotation_0);
 
     // Ensure we have a new statistics data object we can fill:
     FrameStatistic& stat = stats_->NewFrame(frame_number);
@@ -299,7 +292,7 @@ void VideoProcessorImpl::FrameEncoded(const EncodedImage& encoded_image) {
   last_frame_missing_ = copied_image._length == 0;
 }
 
-void VideoProcessorImpl::FrameDecoded(const I420VideoFrame& image) {
+void VideoProcessorImpl::FrameDecoded(const VideoFrame& image) {
   TickTime decode_stop = TickTime::Now();
   int frame_number = image.timestamp();
   // Report stats
@@ -319,7 +312,7 @@ void VideoProcessorImpl::FrameDecoded(const I420VideoFrame& image) {
   // upsample back to original size: needed for PSNR and SSIM computations.
   if (image.width() !=  config_.codec_settings->width ||
       image.height() != config_.codec_settings->height) {
-    I420VideoFrame up_image;
+    VideoFrame up_image;
     int ret_val = scaler_.Set(image.width(), image.height(),
                               config_.codec_settings->width,
                               config_.codec_settings->height,
@@ -411,9 +404,8 @@ VideoProcessorImpl::VideoProcessorEncodeCompleteCallback::Encoded(
   video_processor_->FrameEncoded(encoded_image);  // Forward to parent class.
   return 0;
 }
-int32_t
-VideoProcessorImpl::VideoProcessorDecodeCompleteCallback::Decoded(
-    I420VideoFrame& image) {
+int32_t VideoProcessorImpl::VideoProcessorDecodeCompleteCallback::Decoded(
+    VideoFrame& image) {
   video_processor_->FrameDecoded(image);  // forward to parent class
   return 0;
 }

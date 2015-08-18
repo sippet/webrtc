@@ -73,7 +73,7 @@ class NetEqImpl : public webrtc::NetEq {
             PreemptiveExpandFactory* preemptive_expand_factory,
             bool create_components = true);
 
-  virtual ~NetEqImpl();
+  ~NetEqImpl() override;
 
   // Inserts a new packet into NetEq. The |receive_timestamp| is an indication
   // of the time when the packet was received, and should be measured with
@@ -117,11 +117,12 @@ class NetEqImpl : public webrtc::NetEq {
 
   // Provides an externally created decoder object |decoder| to insert in the
   // decoder database. The decoder implements a decoder of type |codec| and
-  // associates it with |rtp_payload_type|. Returns kOK on success, kFail on
-  // failure.
+  // associates it with |rtp_payload_type|. The decoder will produce samples
+  // at the rate |sample_rate_hz|. Returns kOK on success, kFail on failure.
   int RegisterExternalDecoder(AudioDecoder* decoder,
                               enum NetEqDecoder codec,
-                              uint8_t rtp_payload_type) override;
+                              uint8_t rtp_payload_type,
+                              int sample_rate_hz) override;
 
   // Removes |rtp_payload_type| from the codec database. Returns 0 on success,
   // -1 on failure.
@@ -133,11 +134,11 @@ class NetEqImpl : public webrtc::NetEq {
 
   int LeastRequiredDelayMs() const override;
 
-  int SetTargetDelay() override { return kNotImplemented; }
+  int SetTargetDelay() override;
 
-  int TargetDelay() override { return kNotImplemented; }
+  int TargetDelay() override;
 
-  int CurrentDelay() override { return kNotImplemented; }
+  int CurrentDelay() override;
 
   // Sets the playout mode to |mode|.
   // Deprecated.
@@ -174,9 +175,9 @@ class NetEqImpl : public webrtc::NetEq {
 
   bool GetPlayoutTimestamp(uint32_t* timestamp) override;
 
-  int SetTargetNumberOfChannels() override { return kNotImplemented; }
+  int SetTargetNumberOfChannels() override;
 
-  int SetTargetSampleRate() override { return kNotImplemented; }
+  int SetTargetSampleRate() override;
 
   // Returns the error code for the last occurred error. If no error has
   // occurred, 0 is returned.
@@ -277,7 +278,8 @@ class NetEqImpl : public webrtc::NetEq {
   int DoAccelerate(int16_t* decoded_buffer,
                    size_t decoded_length,
                    AudioDecoder::SpeechType speech_type,
-                   bool play_dtmf) EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+                   bool play_dtmf,
+                   bool fast_accelerate) EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
 
   // Sub-method which calls the PreemptiveExpand class to perform the
   // preemtive expand operation.
@@ -391,6 +393,7 @@ class NetEqImpl : public webrtc::NetEq {
   int decoder_error_code_ GUARDED_BY(crit_sect_);
   const BackgroundNoiseMode background_noise_mode_ GUARDED_BY(crit_sect_);
   NetEqPlayoutMode playout_mode_ GUARDED_BY(crit_sect_);
+  bool enable_fast_accelerate_ GUARDED_BY(crit_sect_);
 
   // These values are used by NACK module to estimate time-to-play of
   // a missing packet. Occasionally, NetEq might decide to decode more

@@ -25,8 +25,7 @@ bool ResampleInputAudioFile::Read(size_t samples,
   rtc::scoped_ptr<int16_t[]> temp_destination(new int16_t[samples_to_read]);
   if (!InputAudioFile::Read(samples_to_read, temp_destination.get()))
     return false;
-  resampler_.ResetIfNeeded(
-      file_rate_hz_, output_rate_hz, kResamplerSynchronous);
+  resampler_.ResetIfNeeded(file_rate_hz_, output_rate_hz, 1);
   int output_length = 0;
   CHECK_EQ(resampler_.Push(temp_destination.get(),
                            static_cast<int>(samples_to_read),
@@ -36,6 +35,15 @@ bool ResampleInputAudioFile::Read(size_t samples,
            0);
   CHECK_EQ(static_cast<int>(samples), output_length);
   return true;
+}
+
+bool ResampleInputAudioFile::Read(size_t samples, int16_t* destination) {
+  CHECK_GT(output_rate_hz_, 0) << "Output rate not set.";
+  return Read(samples, output_rate_hz_, destination);
+}
+
+void ResampleInputAudioFile::set_output_rate_hz(int rate_hz) {
+  output_rate_hz_ = rate_hz;
 }
 
 }  // namespace test

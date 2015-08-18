@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "webrtc/base/atomicops.h"
 #ifdef _WIN32
 #include "webrtc/system_wrappers/source/trace_win.h"
 #else
@@ -32,7 +33,7 @@ namespace webrtc {
 const int Trace::kBoilerplateLength = 71;
 const int Trace::kTimestampPosition = 13;
 const int Trace::kTimestampLength = 12;
-uint32_t Trace::level_filter_ = kTraceDefault;
+volatile int Trace::level_filter_ = kTraceDefault;
 
 // Construct On First Use idiom. Avoids "static initialization order fiasco".
 TraceImpl* TraceImpl::StaticInstance(CountOperation count_operation,
@@ -401,7 +402,12 @@ void TraceImpl::WriteToFile(const char* msg, uint16_t length) {
       row_count_text_++;
     }
   }
-  trace_file_->Write(msg, length);
+
+  char trace_message[WEBRTC_TRACE_MAX_MESSAGE_SIZE];
+  memcpy(trace_message, msg, length);
+  trace_message[length] = 0;
+  trace_message[length - 1] = '\n';
+  trace_file_->Write(trace_message, length);
   row_count_text_++;
 }
 
@@ -518,14 +524,17 @@ bool TraceImpl::CreateFileName(
   return true;
 }
 
+// static
 void Trace::CreateTrace() {
   TraceImpl::StaticInstance(kAddRef);
 }
 
+// static
 void Trace::ReturnTrace() {
   TraceImpl::StaticInstance(kRelease);
 }
 
+// static
 int32_t Trace::TraceFile(char file_name[FileWrapper::kMaxFileNameSize]) {
   TraceImpl* trace = TraceImpl::GetTrace();
   if (trace) {
@@ -536,6 +545,17 @@ int32_t Trace::TraceFile(char file_name[FileWrapper::kMaxFileNameSize]) {
   return -1;
 }
 
+// static
+void Trace::set_level_filter(int filter) {
+  rtc::AtomicOps::ReleaseStore(&level_filter_, filter);
+}
+
+// static
+int Trace::level_filter() {
+  return rtc::AtomicOps::AcquireLoad(&level_filter_);
+}
+
+// static
 int32_t Trace::SetTraceFile(const char* file_name,
                             const bool add_file_counter) {
   TraceImpl* trace = TraceImpl::GetTrace();

@@ -34,8 +34,6 @@ class EncodedFrameObserver;
 
 namespace vcm {
 
-class DebugRecorder;
-
 class VCMProcessTimer {
  public:
   VCMProcessTimer(int64_t periodMs, Clock* clock)
@@ -58,11 +56,10 @@ class VideoSender {
 
   VideoSender(Clock* clock,
               EncodedImageCallback* post_encode_callback,
-              VideoEncoderRateObserver* encoder_rate_observer);
+              VideoEncoderRateObserver* encoder_rate_observer,
+              VCMQMSettingsCallback* qm_settings_callback);
 
   ~VideoSender();
-
-  int32_t InitializeSender();
 
   // Register the send codec to be used.
   // This method must be called on the construction thread.
@@ -96,22 +93,19 @@ class VideoSender {
   int32_t SetChannelParameters(uint32_t target_bitrate,  // bits/s.
                                uint8_t lossRate,
                                int64_t rtt);
+  int32_t UpdateEncoderParameters();
 
   int32_t RegisterTransportCallback(VCMPacketizationCallback* transport);
   int32_t RegisterSendStatisticsCallback(VCMSendStatisticsCallback* sendStats);
-  int32_t RegisterVideoQMCallback(VCMQMSettingsCallback* videoQMSettings);
   int32_t RegisterProtectionCallback(VCMProtectionCallback* protection);
-  void SetVideoProtection(bool enable, VCMVideoProtection videoProtection);
+  void SetVideoProtection(VCMVideoProtection videoProtection);
 
-  int32_t AddVideoFrame(const I420VideoFrame& videoFrame,
+  int32_t AddVideoFrame(const VideoFrame& videoFrame,
                         const VideoContentMetrics* _contentMetrics,
                         const CodecSpecificInfo* codecSpecificInfo);
 
   int32_t IntraFrameRequest(int stream_index);
   int32_t EnableFrameDropper(bool enable);
-
-  int StartDebugRecording(const char* file_name_utf8);
-  void StopDebugRecording();
 
   void SuspendBelowMinBitrate();
   bool VideoSuspended() const;
@@ -121,8 +115,6 @@ class VideoSender {
 
  private:
   Clock* clock_;
-
-  rtc::scoped_ptr<DebugRecorder> recorder_;
 
   rtc::scoped_ptr<CriticalSectionWrapper> process_crit_sect_;
   CriticalSectionWrapper* _sendCritSect;
@@ -139,8 +131,17 @@ class VideoSender {
   VideoCodec current_codec_;
   rtc::ThreadChecker main_thread_;
 
-  VCMQMSettingsCallback* qm_settings_callback_;
+  VCMQMSettingsCallback* const qm_settings_callback_;
   VCMProtectionCallback* protection_callback_;
+
+  rtc::CriticalSection params_lock_;
+  struct EncoderParameters {
+    uint32_t target_bitrate;
+    uint8_t loss_rate;
+    int64_t rtt;
+    uint32_t input_frame_rate;
+    bool updated;
+  } encoder_params_ GUARDED_BY(params_lock_);
 };
 
 class VideoReceiver {
@@ -150,7 +151,6 @@ class VideoReceiver {
   VideoReceiver(Clock* clock, EventFactory* event_factory);
   ~VideoReceiver();
 
-  int32_t InitializeReceiver();
   int32_t RegisterReceiveCodec(const VideoCodec* receiveCodec,
                                int32_t numberOfCores,
                                bool requireKeyFrame);
@@ -204,21 +204,11 @@ class VideoReceiver {
       EXCLUSIVE_LOCKS_REQUIRED(_receiveCritSect);
   int32_t RequestKeyFrame();
   int32_t RequestSliceLossIndication(const uint64_t pictureID) const;
-  int32_t NackList(uint16_t* nackList, uint16_t* size);
 
  private:
-  enum VCMKeyRequestMode {
-    kKeyOnError,    // Normal mode, request key frames on decoder error
-    kKeyOnKeyLoss,  // Request key frames on decoder error and on packet loss
-                    // in key frames.
-    kKeyOnLoss,     // Request key frames on decoder error and on packet loss
-                    // in any frame
-  };
-
   Clock* const clock_;
   rtc::scoped_ptr<CriticalSectionWrapper> process_crit_sect_;
   CriticalSectionWrapper* _receiveCritSect;
-  bool _receiverInited GUARDED_BY(_receiveCritSect);
   VCMTiming _timing;
   VCMReceiver _receiver;
   VCMDecodedFrameCallback _decodedFrameCallback;
@@ -236,7 +226,6 @@ class VideoReceiver {
   FILE* _bitStreamBeforeDecoder;
 #endif
   VCMFrameBuffer _frameFromFile;
-  VCMKeyRequestMode _keyRequestMode;
   bool _scheduleKeyRequest GUARDED_BY(process_crit_sect_);
   size_t max_nack_list_size_ GUARDED_BY(process_crit_sect_);
   EncodedImageCallback* pre_decode_image_callback_ GUARDED_BY(_receiveCritSect);

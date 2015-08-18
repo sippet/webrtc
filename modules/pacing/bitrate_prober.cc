@@ -11,6 +11,7 @@
 #include "webrtc/modules/pacing/bitrate_prober.h"
 
 #include <assert.h>
+#include <algorithm>
 #include <limits>
 #include <sstream>
 
@@ -27,6 +28,8 @@ int ComputeDeltaFromBitrate(size_t packet_size, int bitrate_bps) {
       bitrate_bps);
 }
 }  // namespace
+
+const size_t BitrateProber::kMinProbePacketSize = 200;
 
 BitrateProber::BitrateProber()
     : probing_state_(kDisabled),
@@ -87,7 +90,8 @@ int BitrateProber::TimeUntilNextProbe(int64_t now_ms) {
   // We will send the first probe packet immediately if no packet has been
   // sent before.
   int time_until_probe_ms = 0;
-  if (packet_size_last_send_ > 0 && probing_state_ == kProbing) {
+  if (packet_size_last_send_ > kMinProbePacketSize &&
+      probing_state_ == kProbing) {
     int next_delta_ms = ComputeDeltaFromBitrate(packet_size_last_send_,
                                                 probe_bitrates_.front());
     time_until_probe_ms = next_delta_ms - elapsed_time_ms;
@@ -107,7 +111,11 @@ int BitrateProber::TimeUntilNextProbe(int64_t now_ms) {
       time_until_probe_ms = 0;
     }
   }
-  return time_until_probe_ms;
+  return std::max(time_until_probe_ms, 0);
+}
+
+size_t BitrateProber::RecommendedPacketSize() const {
+  return packet_size_last_send_;
 }
 
 void BitrateProber::PacketSent(int64_t now_ms, size_t packet_size) {

@@ -17,12 +17,14 @@
         'libjingle/xmllite/xmllite.gyp:rtc_xmllite',
         'libjingle/xmpp/xmpp.gyp:rtc_xmpp',
         'p2p/p2p.gyp:rtc_p2p',
+        'p2p/p2p.gyp:libstunprober',
         'rtc_p2p_unittest',
         'rtc_sound_tests',
         'rtc_xmllite_unittest',
         'rtc_xmpp_unittest',
         'sound/sound.gyp:rtc_sound',
         '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/testing/gmock.gyp:gmock',
       ],
       'conditions': [
         ['OS=="android"', {
@@ -83,7 +85,7 @@
         'webrtc',
       ],
     },
-        {
+    {
       'target_name': 'screenshare_loopback',
       'type': 'executable',
       'sources': [
@@ -147,7 +149,11 @@
         'tools/agc/agc_manager_unittest.cc',
         'video/bitrate_estimator_tests.cc',
         'video/end_to_end_tests.cc',
+        'video/packet_injection_tests.cc',
         'video/send_statistics_proxy_unittest.cc',
+        'video/video_capture_input_unittest.cc',
+        'video/video_decoder_unittest.cc',
+        'video/video_encoder_unittest.cc',
         'video/video_send_stream_tests.cc',
       ],
       'dependencies': [
@@ -171,6 +177,18 @@
             '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
           ],
         }],
+        ['enable_protobuf==1', {
+          'defines': [
+            'ENABLE_RTC_EVENT_LOG',
+          ],
+          'dependencies': [
+            'webrtc.gyp:rtc_event_log',
+            'webrtc.gyp:rtc_event_log_proto',
+          ],
+          'sources': [
+            'video/rtc_event_log_unittest.cc',
+          ],
+        }],
       ],
     },
     {
@@ -178,6 +196,8 @@
       'type': '<(gtest_target_type)',
       'sources': [
         'modules/audio_coding/neteq/test/neteq_performance_unittest.cc',
+        'modules/remote_bitrate_estimator/remote_bitrate_estimators_test.cc',
+
         'tools/agc/agc_manager_integrationtest.cc',
         'video/call_perf_tests.cc',
         'video/full_stack.cc',
@@ -190,7 +210,8 @@
         '<(webrtc_root)/modules/modules.gyp:video_capture',
         '<(webrtc_root)/test/test.gyp:channel_transport',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',
-        'modules/modules.gyp:neteq_test_support',  # Needed by neteq_performance_unittest.
+        'modules/modules.gyp:neteq_test_support',
+        'modules/modules.gyp:bwe_simulator',
         'modules/modules.gyp:rtp_rtcp',
         'test/test.gyp:test_main',
         'test/webrtc_test_common.gyp:webrtc_test_common',

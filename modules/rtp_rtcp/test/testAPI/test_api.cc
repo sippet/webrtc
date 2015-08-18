@@ -125,8 +125,6 @@ TEST_F(RtpRtcpAPITest, Basic) {
 }
 
 TEST_F(RtpRtcpAPITest, MTU) {
-  EXPECT_EQ(-1, module_->SetMaxTransferUnit(10));
-  EXPECT_EQ(-1, module_->SetMaxTransferUnit(IP_PACKET_SIZE + 1));
   EXPECT_EQ(0, module_->SetMaxTransferUnit(1234));
   EXPECT_EQ(1234 - 20 - 8, module_->MaxPayloadLength());
 
@@ -174,9 +172,10 @@ TEST_F(RtpRtcpAPITest, RtxSender) {
 TEST_F(RtpRtcpAPITest, RtxReceiver) {
   const uint32_t kRtxSsrc = 1;
   const int kRtxPayloadType = 119;
+  const int kPayloadType = 100;
   EXPECT_FALSE(rtp_payload_registry_->RtxEnabled());
   rtp_payload_registry_->SetRtxSsrc(kRtxSsrc);
-  rtp_payload_registry_->SetRtxPayloadType(kRtxPayloadType);
+  rtp_payload_registry_->SetRtxPayloadType(kRtxPayloadType, kPayloadType);
   EXPECT_TRUE(rtp_payload_registry_->RtxEnabled());
   RTPHeader rtx_header;
   rtx_header.ssrc = kRtxSsrc;

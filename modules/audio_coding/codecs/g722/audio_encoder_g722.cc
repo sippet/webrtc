@@ -12,6 +12,7 @@
 
 #include <limits>
 #include "webrtc/base/checks.h"
+#include "webrtc/common_types.h"
 #include "webrtc/modules/audio_coding/codecs/g722/include/g722_interface.h"
 
 namespace webrtc {
@@ -21,6 +22,11 @@ namespace {
 const int kSampleRateHz = 16000;
 
 }  // namespace
+
+bool AudioEncoderG722::Config::IsOk() const {
+  return (frame_size_ms > 0) && (frame_size_ms % 10 == 0) &&
+      (num_channels >= 1);
+}
 
 AudioEncoderG722::EncoderState::EncoderState() {
   CHECK_EQ(0, WebRtcG722_CreateEncoder(&encoder));
@@ -38,14 +44,13 @@ AudioEncoderG722::AudioEncoderG722(const Config& config)
       num_10ms_frames_buffered_(0),
       first_timestamp_in_buffer_(0),
       encoders_(new EncoderState[num_channels_]),
-      interleave_buffer_(new uint8_t[2 * num_channels_]) {
-  CHECK_EQ(config.frame_size_ms % 10, 0)
-      << "Frame size must be an integer multiple of 10 ms.";
+      interleave_buffer_(2 * num_channels_) {
+  CHECK(config.IsOk());
   const int samples_per_channel =
       kSampleRateHz / 100 * num_10ms_frames_per_packet_;
   for (int i = 0; i < num_channels_; ++i) {
     encoders_[i].speech_buffer.reset(new int16_t[samples_per_channel]);
-    encoders_[i].encoded_buffer.reset(new uint8_t[samples_per_channel / 2]);
+    encoders_[i].encoded_buffer.SetSize(samples_per_channel / 2);
   }
 }
 
@@ -77,11 +82,16 @@ int AudioEncoderG722::Max10MsFramesInAPacket() const {
   return num_10ms_frames_per_packet_;
 }
 
-void AudioEncoderG722::EncodeInternal(uint32_t rtp_timestamp,
-                                      const int16_t* audio,
-                                      size_t max_encoded_bytes,
-                                      uint8_t* encoded,
-                                      EncodedInfo* info) {
+int AudioEncoderG722::GetTargetBitrate() const {
+  // 4 bits/sample, 16000 samples/s/channel.
+  return 64000 * NumChannels();
+}
+
+AudioEncoder::EncodedInfo AudioEncoderG722::EncodeInternal(
+    uint32_t rtp_timestamp,
+    const int16_t* audio,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   CHECK_GE(max_encoded_bytes, MaxEncodedBytes());
 
   if (num_10ms_frames_buffered_ == 0)
@@ -95,8 +105,7 @@ void AudioEncoderG722::EncodeInternal(uint32_t rtp_timestamp,
 
   // If we don't yet have enough samples for a packet, we're done for now.
   if (++num_10ms_frames_buffered_ < num_10ms_frames_per_packet_) {
-    info->encoded_bytes = 0;
-    return;
+    return EncodedInfo();
   }
 
   // Encode each channel separately.
@@ -106,7 +115,7 @@ void AudioEncoderG722::EncodeInternal(uint32_t rtp_timestamp,
   for (int i = 0; i < num_channels_; ++i) {
     const int encoded = WebRtcG722_Encode(
         encoders_[i].encoder, encoders_[i].speech_buffer.get(),
-        samples_per_channel, encoders_[i].encoded_buffer.get());
+        samples_per_channel, encoders_[i].encoded_buffer.data<uint8_t>());
     CHECK_GE(encoded, 0);
     CHECK_EQ(encoded, samples_per_channel / 2);
   }
@@ -116,21 +125,37 @@ void AudioEncoderG722::EncodeInternal(uint32_t rtp_timestamp,
   // significant half first.
   for (int i = 0; i < samples_per_channel / 2; ++i) {
     for (int j = 0; j < num_channels_; ++j) {
-      uint8_t two_samples = encoders_[j].encoded_buffer[i];
-      interleave_buffer_[j] = two_samples >> 4;
-      interleave_buffer_[num_channels_ + j] = two_samples & 0xf;
+      uint8_t two_samples = encoders_[j].encoded_buffer.data()[i];
+      interleave_buffer_.data()[j] = two_samples >> 4;
+      interleave_buffer_.data()[num_channels_ + j] = two_samples & 0xf;
     }
     for (int j = 0; j < num_channels_; ++j)
-      encoded[i * num_channels_ + j] =
-          interleave_buffer_[2 * j] << 4 | interleave_buffer_[2 * j + 1];
+      encoded[i * num_channels_ + j] = interleave_buffer_.data()[2 * j] << 4 |
+                                       interleave_buffer_.data()[2 * j + 1];
   }
-  info->encoded_bytes = samples_per_channel / 2 * num_channels_;
-  info->encoded_timestamp = first_timestamp_in_buffer_;
-  info->payload_type = payload_type_;
+  EncodedInfo info;
+  info.encoded_bytes = samples_per_channel / 2 * num_channels_;
+  info.encoded_timestamp = first_timestamp_in_buffer_;
+  info.payload_type = payload_type_;
+  return info;
 }
 
 int AudioEncoderG722::SamplesPerChannel() const {
   return kSampleRateHz / 100 * num_10ms_frames_per_packet_;
+}
+
+namespace {
+AudioEncoderG722::Config CreateConfig(const CodecInst& codec_inst) {
+  AudioEncoderG722::Config config;
+  config.num_channels = codec_inst.channels;
+  config.frame_size_ms = codec_inst.pacsize / 16;
+  config.payload_type = codec_inst.pltype;
+  return config;
+}
+}  // namespace
+
+AudioEncoderMutableG722::AudioEncoderMutableG722(const CodecInst& codec_inst)
+    : AudioEncoderMutableImpl<AudioEncoderG722>(CreateConfig(codec_inst)) {
 }
 
 }  // namespace webrtc

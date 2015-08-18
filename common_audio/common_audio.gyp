@@ -29,8 +29,6 @@
         ],
       },
       'sources': [
-        'channel_buffer.cc',
-        'channel_buffer.h',
         'audio_converter.cc',
         'audio_converter.h',
         'audio_ring_buffer.cc',
@@ -38,11 +36,21 @@
         'audio_util.cc',
         'blocker.cc',
         'blocker.h',
+        'channel_buffer.cc',
+        'channel_buffer.h',
+        'fft4g.c',
+        'fft4g.h',
         'fir_filter.cc',
         'fir_filter.h',
         'fir_filter_neon.h',
         'fir_filter_sse.h',
         'include/audio_util.h',
+        'lapped_transform.cc',
+        'lapped_transform.h',
+        'real_fourier.cc',
+        'real_fourier.h',
+        'real_fourier_ooura.cc',
+        'real_fourier_ooura.h',
         'resampler/include/push_resampler.h',
         'resampler/include/resampler.h',
         'resampler/push_resampler.cc',
@@ -91,6 +99,8 @@
         'signal_processing/splitting_filter.c',
         'signal_processing/sqrt_of_one_minus_x_squared.c',
         'signal_processing/vector_scaling_operations.c',
+        'sparse_fir_filter.cc',
+        'sparse_fir_filter.h',
         'vad/include/vad.h',
         'vad/include/webrtc_vad.h',
         'vad/vad.cc',
@@ -113,11 +123,10 @@
       'conditions': [
         ['rtc_use_openmax_dl==1', {
           'sources': [
-            'lapped_transform.cc',
-            'lapped_transform.h',
-            'real_fourier.cc',
-            'real_fourier.h',
+            'real_fourier_openmax.cc',
+            'real_fourier_openmax.h',
           ],
+          'defines': ['RTC_USE_OPENMAX_DL',],
           'conditions': [
             ['build_openmax_dl==1', {
               'dependencies': ['<(DEPTH)/third_party/openmax_dl/dl/dl.gyp:openmax_dl',],
@@ -126,6 +135,9 @@
         }],
         ['target_arch=="ia32" or target_arch=="x64"', {
           'dependencies': ['common_audio_sse2',],
+        }],
+        ['build_with_neon==1', {
+          'dependencies': ['common_audio_neon',],
         }],
         ['target_arch=="arm"', {
           'sources': [
@@ -138,7 +150,6 @@
           ],
           'conditions': [
             ['arm_version>=7', {
-              'dependencies': ['common_audio_neon',],
               'sources': [
                 'signal_processing/filter_ar_fast_q12_armv7.S',
               ],
@@ -148,10 +159,7 @@
             }],
           ],  # conditions
         }],
-        ['target_arch=="arm64"', {
-          'dependencies': ['common_audio_neon',],
-        }],
-        ['target_arch=="mipsel" and mips_arch_variant!="r6" and android_webview_build==0', {
+        ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
           'sources': [
             'signal_processing/include/spl_inl_mips.h',
             'signal_processing/complex_bit_reverse_mips.c',
@@ -192,14 +200,18 @@
             'fir_filter_sse.cc',
             'resampler/sinc_resampler_sse.cc',
           ],
-          'cflags': ['-msse2',],
-          'xcode_settings': {
-            'OTHER_CFLAGS': ['-msse2',],
-          },
+          'conditions': [
+            ['os_posix==1', {
+              'cflags': [ '-msse2', ],
+              'xcode_settings': {
+                'OTHER_CFLAGS': [ '-msse2', ],
+              },
+            }],
+          ],
         },
       ],  # targets
     }],
-    ['target_arch=="arm" and arm_version>=7 or target_arch=="arm64"', {
+    ['build_with_neon==1', {
       'targets': [
         {
           'target_name': 'common_audio_neon',
@@ -211,15 +223,6 @@
             'signal_processing/cross_correlation_neon.c',
             'signal_processing/downsample_fast_neon.c',
             'signal_processing/min_max_operations_neon.c',
-          ],
-          'conditions': [
-            # Disable LTO in common_audio_neon target due to compiler bug
-            ['use_lto==1', {
-              'cflags!': [
-                '-flto',
-                '-ffat-lto-objects',
-              ],
-            }],
           ],
         },
       ],  # targets
@@ -241,6 +244,8 @@
             'audio_util_unittest.cc',
             'blocker_unittest.cc',
             'fir_filter_unittest.cc',
+            'lapped_transform_unittest.cc',
+            'real_fourier_unittest.cc',
             'resampler/resampler_unittest.cc',
             'resampler/push_resampler_unittest.cc',
             'resampler/push_sinc_resampler_unittest.cc',
@@ -250,6 +255,7 @@
             'ring_buffer_unittest.cc',
             'signal_processing/real_fft_unittest.cc',
             'signal_processing/signal_processing_unittest.cc',
+            'sparse_fir_filter_unittest.cc',
             'vad/vad_core_unittest.cc',
             'vad/vad_filterbank_unittest.cc',
             'vad/vad_gmm_unittest.cc',
@@ -262,10 +268,7 @@
           ],
           'conditions': [
             ['rtc_use_openmax_dl==1', {
-              'sources': [
-                'lapped_transform_unittest.cc',
-                'real_fourier_unittest.cc',
-              ],
+              'defines': ['RTC_USE_OPENMAX_DL',],
             }],
             ['OS=="android"', {
               'dependencies': [

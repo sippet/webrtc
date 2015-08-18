@@ -28,6 +28,7 @@ struct CodecInst;
 struct WebRtcRTPHeader;
 class AudioFrame;
 class RTPFragmentationHeader;
+class AudioEncoderMutable;
 
 #define WEBRTC_10MS_PCM_AUDIO 960  // 16 bits super wideband 48 kHz
 
@@ -99,6 +100,7 @@ class AudioCodingModule {
   //
   static AudioCodingModule* Create(int id);
   static AudioCodingModule* Create(int id, Clock* clock);
+  static AudioCodingModule* Create(const Config& config);
   virtual ~AudioCodingModule() {};
 
   ///////////////////////////////////////////////////////////////////////////
@@ -191,20 +193,6 @@ class AudioCodingModule {
   //
 
   ///////////////////////////////////////////////////////////////////////////
-  // int32_t InitializeSender()
-  // Any encoder-related state of ACM will be initialized to the
-  // same state when ACM is created. This will not interrupt or
-  // effect decoding functionality of ACM. ACM will lose all the
-  // encoding-related settings by calling this function.
-  // For instance, a send codec has to be registered again.
-  //
-  // Return value:
-  //   -1 if failed to initialize,
-  //    0 if succeeded.
-  //
-  virtual int32_t InitializeSender() = 0;
-
-  ///////////////////////////////////////////////////////////////////////////
   // int32_t ResetEncoder()
   // This API resets the states of encoder. All the encoder settings, such as
   // send-codec or VAD/DTX, will be preserved.
@@ -244,6 +232,11 @@ class AudioCodingModule {
   //
   virtual int32_t RegisterSendCodec(const CodecInst& send_codec) = 0;
 
+  // Registers |external_speech_encoder| as encoder. The new encoder will
+  // replace any previously registered speech encoder (internal or external).
+  virtual void RegisterExternalSendCodec(
+      AudioEncoderMutable* external_speech_encoder) = 0;
+
   ///////////////////////////////////////////////////////////////////////////
   // int32_t SendCodec()
   // Get parameters for the codec currently registered as send codec.
@@ -276,6 +269,11 @@ class AudioCodingModule {
   //   -1 if an error is happened.
   //
   virtual int32_t SendBitrate() const = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
+  // Sets the bitrate to the specified value in bits/sec. If the value is not
+  // supported by the codec, it will choose another appropriate value.
+  virtual void SetBitRate(int bitrate_bps) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t SetReceivedEstimatedBandwidth()
@@ -876,26 +874,20 @@ class AudioCodingModule {
       bool enforce_frame_size = false) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
-  // int SetOpusApplication(OpusApplicationMode application,
-  //                        bool disable_dtx_if_needed)
+  // int SetOpusApplication()
   // Sets the intended application if current send codec is Opus. Opus uses this
   // to optimize the encoding for applications like VOIP and music. Currently,
-  // two modes are supported: kVoip and kAudio. kAudio is only allowed when Opus
-  // DTX is switched off. If DTX is on, and |application| == kAudio, a failure
-  // will be triggered unless |disable_dtx_if_needed| == true, for which, the
-  // DTX will be forced off.
+  // two modes are supported: kVoip and kAudio.
   //
   // Input:
   //   - application            : intended application.
-  //   - disable_dtx_if_needed  : whether to force Opus DTX to stop.
   //
   // Return value:
   //   -1 if current send codec is not Opus or error occurred in setting the
   //      Opus application mode.
   //    0 if the Opus application mode is successfully set.
   //
-  virtual int SetOpusApplication(OpusApplicationMode application,
-                                 bool force_dtx) = 0;
+  virtual int SetOpusApplication(OpusApplicationMode application) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int SetOpusMaxPlaybackRate()
@@ -914,18 +906,15 @@ class AudioCodingModule {
   virtual int SetOpusMaxPlaybackRate(int frequency_hz) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
-  // EnableOpusDtx(bool force_voip)
-  // Enable the DTX, if current send codec is Opus. Currently, DTX can only be
-  // enabled when the application mode is kVoip. If |force_voip| == true,
-  // the application mode will be forced to kVoip. Otherwise, a failure will be
-  // triggered if current application mode is kAudio.
-  // Input:
-  //   - force_application    : whether to force application mode to kVoip.
+  // EnableOpusDtx()
+  // Enable the DTX, if current send codec is Opus.
+  //
   // Return value:
   //   -1 if current send codec is not Opus or error occurred in enabling the
   //      Opus DTX.
-  //    0 if Opus DTX is enabled successfully..
-  virtual int EnableOpusDtx(bool force_application) = 0;
+  //    0 if Opus DTX is enabled successfully.
+  //
+  virtual int EnableOpusDtx() = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int DisableOpusDtx()
@@ -1011,15 +1000,7 @@ class ReceiverInfo;
 class AudioCoding {
  public:
   struct Config {
-    Config()
-        : neteq_config(),
-          clock(Clock::GetRealTimeClock()),
-          transport(NULL),
-          vad_callback(NULL),
-          play_dtmf(true),
-          initial_playout_delay_ms(0),
-          playout_channels(1),
-          playout_frequency_hz(32000) {}
+    Config();
 
     AudioCodingModule::Config ToOldConfig() const {
       AudioCodingModule::Config old_config;

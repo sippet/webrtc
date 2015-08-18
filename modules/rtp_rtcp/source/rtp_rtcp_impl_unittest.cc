@@ -218,9 +218,9 @@ class RtpRtcpImplTest : public ::testing::Test {
     nack.From(sender ? kReceiverSsrc : kSenderSsrc);
     nack.To(sender ? kSenderSsrc : kReceiverSsrc);
     nack.WithList(list, kListLength);
-    rtcp::RawPacket packet = nack.Build();
-    EXPECT_EQ(0, module->impl_->IncomingRtcpPacket(packet.buffer(),
-                                                   packet.buffer_length()));
+    rtc::scoped_ptr<rtcp::RawPacket> packet(nack.Build());
+    EXPECT_EQ(0, module->impl_->IncomingRtcpPacket(packet->Buffer(),
+                                                   packet->Length()));
   }
 };
 
@@ -373,7 +373,10 @@ TEST_F(RtpRtcpImplTest, RtcpPacketTypeCounter_FirAndPli) {
   EXPECT_EQ(1U, sender_.RtcpReceived().fir_packets);
 
   // Receive module sends a FIR and PLI.
-  EXPECT_EQ(0, receiver_.impl_->SendRTCP(kRtcpFir | kRtcpPli));
+  std::set<RTCPPacketType> packet_types;
+  packet_types.insert(kRtcpFir);
+  packet_types.insert(kRtcpPli);
+  EXPECT_EQ(0, receiver_.impl_->SendCompoundRTCP(packet_types));
   EXPECT_EQ(2U, receiver_.RtcpSent().fir_packets);
   EXPECT_EQ(1U, receiver_.RtcpSent().pli_packets);
   // Send module receives the FIR and PLI.

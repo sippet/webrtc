@@ -691,11 +691,11 @@ TEST_F(VideoProcessorIntegrationTest,
                      false, true, false);
   // Metrics for expected quality.
   QualityMetrics quality_metrics;
-  SetQualityMetrics(&quality_metrics, 31.5, 19.0, 0.80, 0.45);
+  SetQualityMetrics(&quality_metrics, 31.5, 18.0, 0.80, 0.44);
   // Metrics for rate control.
   RateControlMetrics rc_metrics[3];
   SetRateControlMetrics(rc_metrics, 0, 35, 50, 70, 15, 45, 0);
-  SetRateControlMetrics(rc_metrics, 1, 10, 0, 30, 10, 30, 0);
+  SetRateControlMetrics(rc_metrics, 1, 10, 0, 40, 10, 30, 0);
   SetRateControlMetrics(rc_metrics, 2, 5, 0, 30, 5, 20, 0);
   ProcessFramesAndVerify(quality_metrics,
                          rate_profile,
@@ -704,8 +704,7 @@ TEST_F(VideoProcessorIntegrationTest,
 }
 
 // VP9: Run with no packet loss and denoiser on. One key frame (first frame).
-// Disabled due to crash in libvpx revision 763fe7a (webrtc:4418).
-TEST_F(VideoProcessorIntegrationTest, DISABLED_ProcessNoLossDenoiserOnVP9) {
+TEST_F(VideoProcessorIntegrationTest, ProcessNoLossDenoiserOnVP9) {
   // Bitrate and frame rate profile.
   RateProfile rate_profile;
   SetRateProfilePars(&rate_profile, 0, 500, 30, 0);

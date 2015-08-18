@@ -64,11 +64,11 @@ class FilterBanksTest : public testing::Test {
 
 TEST_F(FilterBanksTest, AllpassFilter2FixDec16Test) {
   CalculateResidualEnergyTester(WebRtcIsacfix_AllpassFilter2FixDec16C);
-#ifdef WEBRTC_DETECT_ARM_NEON
+#ifdef WEBRTC_DETECT_NEON
   if ((WebRtc_GetCPUFeaturesARM() & kCPUFeatureNEON) != 0) {
     CalculateResidualEnergyTester(WebRtcIsacfix_AllpassFilter2FixDec16Neon);
   }
-#elif defined(WEBRTC_ARCH_ARM_NEON)
+#elif defined(WEBRTC_HAS_NEON)
   CalculateResidualEnergyTester(WebRtcIsacfix_AllpassFilter2FixDec16Neon);
 #endif
 }

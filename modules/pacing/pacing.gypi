@@ -13,12 +13,15 @@
       'type': 'static_library',
       'dependencies': [
         '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
+        '<(webrtc_root)/modules/modules.gyp:bitrate_controller',
       ],
       'sources': [
         'include/paced_sender.h',
+        'include/packet_router.h',
         'bitrate_prober.cc',
         'bitrate_prober.h',
         'paced_sender.cc',
+        'packet_router.cc',
       ],
     },
   ], # targets

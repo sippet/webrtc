@@ -78,11 +78,11 @@ int16_t WebRtcOpus_EncoderFree(OpusEncInst* inst) {
   }
 }
 
-int16_t WebRtcOpus_Encode(OpusEncInst* inst,
-                          const int16_t* audio_in,
-                          int16_t samples,
-                          int16_t length_encoded_buffer,
-                          uint8_t* encoded) {
+int WebRtcOpus_Encode(OpusEncInst* inst,
+                      const int16_t* audio_in,
+                      int16_t samples,
+                      int16_t length_encoded_buffer,
+                      uint8_t* encoded) {
   int res;
 
   if (samples > 48 * kWebRtcOpusMaxEncodeFrameSizeMs) {
@@ -168,15 +168,29 @@ int16_t WebRtcOpus_DisableFec(OpusEncInst* inst) {
 }
 
 int16_t WebRtcOpus_EnableDtx(OpusEncInst* inst) {
-  if (inst) {
-    return opus_encoder_ctl(inst->encoder, OPUS_SET_DTX(1));
-  } else {
+  if (!inst) {
     return -1;
   }
+
+  // To prevent Opus from entering CELT-only mode by forcing signal type to
+  // voice to make sure that DTX behaves correctly. Currently, DTX does not
+  // last long during a pure silence, if the signal type is not forced.
+  // TODO(minyue): Remove the signal type forcing when Opus DTX works properly
+  // without it.
+  int ret = opus_encoder_ctl(inst->encoder,
+                             OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+  if (ret != OPUS_OK)
+    return ret;
+
+  return opus_encoder_ctl(inst->encoder, OPUS_SET_DTX(1));
 }
 
 int16_t WebRtcOpus_DisableDtx(OpusEncInst* inst) {
   if (inst) {
+    int ret = opus_encoder_ctl(inst->encoder,
+                               OPUS_SET_SIGNAL(OPUS_AUTO));
+    if (ret != OPUS_OK)
+      return ret;
     return opus_encoder_ctl(inst->encoder, OPUS_SET_DTX(0));
   } else {
     return -1;
@@ -277,9 +291,9 @@ static int DecodeNative(OpusDecInst* inst, const uint8_t* encoded,
   return res;
 }
 
-int16_t WebRtcOpus_Decode(OpusDecInst* inst, const uint8_t* encoded,
-                          int16_t encoded_bytes, int16_t* decoded,
-                          int16_t* audio_type) {
+int WebRtcOpus_Decode(OpusDecInst* inst, const uint8_t* encoded,
+                      int16_t encoded_bytes, int16_t* decoded,
+                      int16_t* audio_type) {
   int decoded_samples;
 
   if (encoded_bytes == 0) {
@@ -304,8 +318,8 @@ int16_t WebRtcOpus_Decode(OpusDecInst* inst, const uint8_t* encoded,
   return decoded_samples;
 }
 
-int16_t WebRtcOpus_DecodePlc(OpusDecInst* inst, int16_t* decoded,
-                             int16_t number_of_lost_frames) {
+int WebRtcOpus_DecodePlc(OpusDecInst* inst, int16_t* decoded,
+                         int number_of_lost_frames) {
   int16_t audio_type = 0;
   int decoded_samples;
   int plc_samples;
@@ -325,9 +339,9 @@ int16_t WebRtcOpus_DecodePlc(OpusDecInst* inst, int16_t* decoded,
   return decoded_samples;
 }
 
-int16_t WebRtcOpus_DecodeFec(OpusDecInst* inst, const uint8_t* encoded,
-                             int16_t encoded_bytes, int16_t* decoded,
-                             int16_t* audio_type) {
+int WebRtcOpus_DecodeFec(OpusDecInst* inst, const uint8_t* encoded,
+                         int16_t encoded_bytes, int16_t* decoded,
+                         int16_t* audio_type) {
   int decoded_samples;
   int fec_samples;
 

@@ -18,7 +18,6 @@
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 
 namespace webrtc {
@@ -143,8 +142,7 @@ int D3D9Channel::FrameSizeChange(int width, int height, int numberOfStreams)
 }
 
 int32_t D3D9Channel::RenderFrame(const uint32_t streamId,
-                                 I420VideoFrame& videoFrame)
-{
+                                 const VideoFrame& videoFrame) {
     CriticalSectionScoped cs(_critSect);
     if (_width != videoFrame.width() || _height != videoFrame.height())
     {
@@ -157,7 +155,7 @@ int32_t D3D9Channel::RenderFrame(const uint32_t streamId,
 }
 
 // Called from video engine when a new frame should be rendered.
-int D3D9Channel::DeliverFrame(const I420VideoFrame& videoFrame) {
+int D3D9Channel::DeliverFrame(const VideoFrame& videoFrame) {
   WEBRTC_TRACE(kTraceStream, kTraceVideo, -1,
                "DeliverFrame to D3D9Channel");
 
@@ -287,7 +285,6 @@ VideoRenderDirect3D9::VideoRenderDirect3D9(Trace* trace,
     _pD3D(NULL),
     _d3dChannels(),
     _d3dZorder(),
-    _screenUpdateThread(NULL),
     _screenUpdateEvent(NULL),
     _logoLeft(0),
     _logoTop(0),
@@ -297,9 +294,9 @@ VideoRenderDirect3D9::VideoRenderDirect3D9(Trace* trace,
     _totalMemory(0),
     _availableMemory(0)
 {
-    _screenUpdateThread = ThreadWrapper::CreateThread(ScreenUpdateThreadProc,
-                                                      this, kRealtimePriority);
-    _screenUpdateEvent = EventWrapper::Create();
+    _screenUpdateThread = ThreadWrapper::CreateThread(
+        ScreenUpdateThreadProc, this, "ScreenUpdateThread");
+    _screenUpdateEvent = EventTimerWrapper::Create();
     SetRect(&_originalHwndRect, 0, 0, 0, 0);
 }
 
@@ -308,17 +305,14 @@ VideoRenderDirect3D9::~VideoRenderDirect3D9()
     //NOTE: we should not enter CriticalSection in here!
 
     // Signal event to exit thread, then delete it
-    ThreadWrapper* tmpPtr = _screenUpdateThread;
-    _screenUpdateThread = NULL;
+    ThreadWrapper* tmpPtr = _screenUpdateThread.release();
     if (tmpPtr)
     {
         _screenUpdateEvent->Set();
         _screenUpdateEvent->StopTimer();
 
-        if (tmpPtr->Stop())
-        {
-            delete tmpPtr;
-        }
+        tmpPtr->Stop();
+        delete tmpPtr;
     }
     delete _screenUpdateEvent;
 
@@ -552,6 +546,7 @@ int32_t VideoRenderDirect3D9::Init()
         return -1;
     }
     _screenUpdateThread->Start();
+    _screenUpdateThread->SetPriority(kRealtimePriority);
 
     // Start the event triggering the render process
     unsigned int monitorFreq = 60;
@@ -606,9 +601,6 @@ int VideoRenderDirect3D9::UpdateRenderSurface()
     {
         _pd3dDevice->SetStreamSource(0, _pVB, 0, sizeof(CUSTOMVERTEX));
         _pd3dDevice->SetFVF(D3DFVF_CUSTOMVERTEX);
-
-        D3DXMATRIX matWorld;
-        D3DXMATRIX matWorldTemp;
 
         //draw all the channels
         //get texture from the channels

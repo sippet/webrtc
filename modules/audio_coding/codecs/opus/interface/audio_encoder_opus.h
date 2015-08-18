@@ -13,6 +13,8 @@
 
 #include <vector>
 
+#include "webrtc/base/scoped_ptr.h"
+#include "webrtc/modules/audio_coding/codecs/audio_encoder_mutable_impl.h"
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 #include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
 
@@ -50,6 +52,7 @@ class AudioEncoderOpus final : public AudioEncoder {
   size_t MaxEncodedBytes() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
+  int GetTargetBitrate() const override;
   void SetTargetBitrate(int bits_per_second) override;
   void SetProjectedPacketLossRate(double fraction) override;
 
@@ -57,12 +60,10 @@ class AudioEncoderOpus final : public AudioEncoder {
   ApplicationMode application() const { return application_; }
   bool dtx_enabled() const { return dtx_enabled_; }
 
- protected:
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
   const int num_10ms_frames_per_packet_;
@@ -76,6 +77,35 @@ class AudioEncoderOpus final : public AudioEncoder {
   OpusEncInst* inst_;
   uint32_t first_timestamp_in_buffer_;
   double packet_loss_rate_;
+};
+
+struct CodecInst;
+
+class AudioEncoderMutableOpus
+    : public AudioEncoderMutableImpl<AudioEncoderOpus> {
+ public:
+  explicit AudioEncoderMutableOpus(const CodecInst& codec_inst);
+  bool SetFec(bool enable) override;
+
+  // Set Opus DTX. Once enabled, Opus stops transmission, when it detects voice
+  // being inactive. During that, it still sends 2 packets (one for content, one
+  // for signaling) about every 400 ms.
+  bool SetDtx(bool enable) override;
+
+  bool SetApplication(Application application) override;
+  bool SetMaxPlaybackRate(int frequency_hz) override;
+  AudioEncoderOpus::ApplicationMode application() const {
+    CriticalSectionScoped cs(encoder_lock_.get());
+    return encoder()->application();
+  }
+  double packet_loss_rate() const {
+    CriticalSectionScoped cs(encoder_lock_.get());
+    return encoder()->packet_loss_rate();
+  }
+  bool dtx_enabled() const {
+    CriticalSectionScoped cs(encoder_lock_.get());
+    return encoder()->dtx_enabled();
+  }
 };
 
 }  // namespace webrtc

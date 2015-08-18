@@ -21,11 +21,11 @@
 #include <windows.h>
 #endif
 
-#include "webrtc/common_video/interface/i420_video_frame.h"
 #include "webrtc/modules/interface/module.h"
 #include "webrtc/modules/interface/module_common_types.h"
 #include "webrtc/modules/video_coding/main/interface/video_coding_defines.h"
 #include "webrtc/system_wrappers/interface/event_wrapper.h"
+#include "webrtc/video_frame.h"
 
 namespace webrtc
 {
@@ -82,7 +82,9 @@ public:
     };
 
     static VideoCodingModule* Create(
-        VideoEncoderRateObserver* encoder_rate_observer);
+        Clock* clock,
+        VideoEncoderRateObserver* encoder_rate_observer,
+        VCMQMSettingsCallback* qm_settings_callback);
 
     static VideoCodingModule* Create(Clock* clock, EventFactory* event_factory);
 
@@ -116,18 +118,6 @@ public:
     /*
     *   Sender
     */
-
-    // Any encoder-related state of VCM will be initialized to the
-    // same state as when the VCM was created. This will not interrupt
-    // or effect decoding functionality of VCM. VCM will lose all the
-    // encoding-related settings by calling this function.
-    // For instance, a send codec has to be registered again.
-    //
-    // NOTE: Must be called on the thread that constructed the VCM instance.
-    //
-    // Return value      : VCM_OK, on success.
-    //                     < 0,         on error.
-    virtual int32_t InitializeSender() = 0;
 
     // Registers a codec to be used for encoding. Calling this
     // API multiple times overwrites any previously registered codecs.
@@ -267,16 +257,6 @@ public:
     virtual int32_t RegisterSendStatisticsCallback(
                                      VCMSendStatisticsCallback* sendStats) = 0;
 
-    // Register a video quality settings callback which will be called when
-    // frame rate/dimensions need to be updated for video quality optimization
-    //
-    // Input:
-    //      - videoQMSettings  : The callback object to register.
-    //
-    // Return value      : VCM_OK, on success.
-    //                     < 0,         on error
-    virtual int32_t RegisterVideoQMCallback(VCMQMSettingsCallback* videoQMSettings) = 0;
-
     // Register a video protection callback which will be called to deliver
     // the requested FEC rate and NACK status (on/off).
     //
@@ -311,7 +291,7 @@ public:
     // Return value      : VCM_OK, on success.
     //                     < 0,         on error.
     virtual int32_t AddVideoFrame(
-        const I420VideoFrame& videoFrame,
+        const VideoFrame& videoFrame,
         const VideoContentMetrics* contentMetrics = NULL,
         const CodecSpecificInfo* codecSpecificInfo = NULL) = 0;
 
@@ -339,17 +319,6 @@ public:
     /*
     *   Receiver
     */
-
-    // The receiver state of the VCM will be initialized to the
-    // same state as when the VCM was created. This will not interrupt
-    // or effect the send side functionality of VCM. VCM will lose all the
-    // decoding-related settings by calling this function. All frames
-    // inside the jitter buffer are flushed and the delay is reset.
-    // For instance, a receive codec has to be registered again.
-    //
-    // Return value      : VCM_OK, on success.
-    //                     < 0,         on error.
-    virtual int32_t InitializeReceiver() = 0;
 
     // Register possible receive codecs, can be called multiple times for different codecs.
     // The module will automatically switch between registered codecs depending on the
@@ -564,12 +533,6 @@ public:
     // Setting a desired delay to the VCM receiver. Video rendering will be
     // delayed by at least desired_delay_ms.
     virtual int SetMinReceiverDelay(int desired_delay_ms) = 0;
-
-    // Enables recording of debugging information.
-    virtual int StartDebugRecording(const char* file_name_utf8) = 0;
-
-    // Disables recording of debugging information.
-    virtual int StopDebugRecording() = 0;
 
     // Lets the sender suspend video when the rate drops below
     // |threshold_bps|, and turns back on when the rate goes back up above

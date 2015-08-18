@@ -73,7 +73,7 @@ class NetEqExternalDecoderUnitTest : public test::NetEqExternalDecoderTest {
       return -1;
     }
     payload_size_bytes_ = WebRtcPcm16b_Encode(input_, frame_size_samples_,
-                                              encoded_);;
+                                              encoded_);
 
     int next_send_time = rtp_generator_->GetRtpHeader(
         kPayloadType, frame_size_samples_, &rtp_header_);
@@ -101,7 +101,7 @@ class NetEqExternalDecoderUnitTest : public test::NetEqExternalDecoderTest {
     } while (Lost());  // If lost, immediately read the next packet.
 
     EXPECT_CALL(*external_decoder_,
-                Decode(_, payload_size_bytes_, 1000 * samples_per_ms_, _, _))
+                Decode(_, payload_size_bytes_, 1000 * samples_per_ms_, _, _, _))
         .Times(NumExpectedDecodeCalls(num_loops));
 
     uint32_t time_now = 0;

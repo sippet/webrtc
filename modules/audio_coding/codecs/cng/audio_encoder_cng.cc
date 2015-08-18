@@ -50,8 +50,6 @@ AudioEncoderCng::AudioEncoderCng(const Config& config)
     : speech_encoder_(config.speech_encoder),
       cng_payload_type_(config.payload_type),
       num_cng_coefficients_(config.num_cng_coefficients),
-      first_timestamp_in_buffer_(0),
-      frames_in_buffer_(0),
       last_frame_active_(true),
       vad_(new Vad(config.vad_mode)) {
   if (config.vad) {
@@ -99,6 +97,10 @@ int AudioEncoderCng::Max10MsFramesInAPacket() const {
   return speech_encoder_->Max10MsFramesInAPacket();
 }
 
+int AudioEncoderCng::GetTargetBitrate() const {
+  return speech_encoder_->GetTargetBitrate();
+}
+
 void AudioEncoderCng::SetTargetBitrate(int bits_per_second) {
   speech_encoder_->SetTargetBitrate(bits_per_second);
 }
@@ -109,43 +111,38 @@ void AudioEncoderCng::SetProjectedPacketLossRate(double fraction) {
   speech_encoder_->SetProjectedPacketLossRate(fraction);
 }
 
-void AudioEncoderCng::EncodeInternal(uint32_t rtp_timestamp,
-                                     const int16_t* audio,
-                                     size_t max_encoded_bytes,
-                                     uint8_t* encoded,
-                                     EncodedInfo* info) {
+AudioEncoder::EncodedInfo AudioEncoderCng::EncodeInternal(
+    uint32_t rtp_timestamp,
+    const int16_t* audio,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   CHECK_GE(max_encoded_bytes, static_cast<size_t>(num_cng_coefficients_ + 1));
-  info->encoded_bytes = 0;
-  const int num_samples = SampleRateHz() / 100 * NumChannels();
-  if (speech_buffer_.empty()) {
-    CHECK_EQ(frames_in_buffer_, 0);
-    first_timestamp_in_buffer_ = rtp_timestamp;
-  }
-  for (int i = 0; i < num_samples; ++i) {
+  const size_t samples_per_10ms_frame = SamplesPer10msFrame();
+  CHECK_EQ(speech_buffer_.size(),
+           rtp_timestamps_.size() * samples_per_10ms_frame);
+  rtp_timestamps_.push_back(rtp_timestamp);
+  for (size_t i = 0; i < samples_per_10ms_frame; ++i) {
     speech_buffer_.push_back(audio[i]);
   }
-  ++frames_in_buffer_;
-  if (frames_in_buffer_ < speech_encoder_->Num10MsFramesInNextPacket()) {
-    return;
+  const int frames_to_encode = speech_encoder_->Num10MsFramesInNextPacket();
+  if (rtp_timestamps_.size() < static_cast<size_t>(frames_to_encode)) {
+    return EncodedInfo();
   }
-  CHECK_LE(frames_in_buffer_ * 10, kMaxFrameSizeMs)
+  CHECK_LE(frames_to_encode * 10, kMaxFrameSizeMs)
       << "Frame size cannot be larger than " << kMaxFrameSizeMs
       << " ms when using VAD/CNG.";
-  const size_t samples_per_10ms_frame = 10 * SampleRateHz() / 1000;
-  CHECK_EQ(speech_buffer_.size(),
-           static_cast<size_t>(frames_in_buffer_) * samples_per_10ms_frame);
 
   // Group several 10 ms blocks per VAD call. Call VAD once or twice using the
   // following split sizes:
   // 10 ms = 10 + 0 ms; 20 ms = 20 + 0 ms; 30 ms = 30 + 0 ms;
   // 40 ms = 20 + 20 ms; 50 ms = 30 + 20 ms; 60 ms = 30 + 30 ms.
   int blocks_in_first_vad_call =
-      (frames_in_buffer_ > 3 ? 3 : frames_in_buffer_);
-  if (frames_in_buffer_ == 4)
+      (frames_to_encode > 3 ? 3 : frames_to_encode);
+  if (frames_to_encode == 4)
     blocks_in_first_vad_call = 2;
+  CHECK_GE(frames_to_encode, blocks_in_first_vad_call);
   const int blocks_in_second_vad_call =
-      frames_in_buffer_ - blocks_in_first_vad_call;
-  CHECK_GE(blocks_in_second_vad_call, 0);
+      frames_to_encode - blocks_in_first_vad_call;
 
   // Check if all of the buffer is passive speech. Start with checking the first
   // block.
@@ -159,14 +156,15 @@ void AudioEncoderCng::EncodeInternal(uint32_t rtp_timestamp,
         samples_per_10ms_frame * blocks_in_second_vad_call, SampleRateHz());
   }
 
+  EncodedInfo info;
   switch (activity) {
     case Vad::kPassive: {
-      EncodePassive(max_encoded_bytes, encoded, info);
+      info = EncodePassive(frames_to_encode, max_encoded_bytes, encoded);
       last_frame_active_ = false;
       break;
     }
     case Vad::kActive: {
-      EncodeActive(max_encoded_bytes, encoded, info);
+      info = EncodeActive(frames_to_encode, max_encoded_bytes, encoded);
       last_frame_active_ = true;
       break;
     }
@@ -176,18 +174,24 @@ void AudioEncoderCng::EncodeInternal(uint32_t rtp_timestamp,
     }
   }
 
-  speech_buffer_.clear();
-  frames_in_buffer_ = 0;
+  speech_buffer_.erase(
+      speech_buffer_.begin(),
+      speech_buffer_.begin() + frames_to_encode * samples_per_10ms_frame);
+  rtp_timestamps_.erase(rtp_timestamps_.begin(),
+                        rtp_timestamps_.begin() + frames_to_encode);
+  return info;
 }
 
-void AudioEncoderCng::EncodePassive(size_t max_encoded_bytes,
-                                    uint8_t* encoded,
-                                    EncodedInfo* info) {
+AudioEncoder::EncodedInfo AudioEncoderCng::EncodePassive(
+    int frames_to_encode,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   bool force_sid = last_frame_active_;
   bool output_produced = false;
   const size_t samples_per_10ms_frame = SamplesPer10msFrame();
-  CHECK_GE(max_encoded_bytes, frames_in_buffer_ * samples_per_10ms_frame);
-  for (int i = 0; i < frames_in_buffer_; ++i) {
+  CHECK_GE(max_encoded_bytes, frames_to_encode * samples_per_10ms_frame);
+  AudioEncoder::EncodedInfo info;
+  for (int i = 0; i < frames_to_encode; ++i) {
     int16_t encoded_bytes_tmp = 0;
     CHECK_GE(WebRtcCng_Encode(cng_inst_.get(),
                               &speech_buffer_[i * samples_per_10ms_frame],
@@ -195,30 +199,35 @@ void AudioEncoderCng::EncodePassive(size_t max_encoded_bytes,
                               encoded, &encoded_bytes_tmp, force_sid), 0);
     if (encoded_bytes_tmp > 0) {
       CHECK(!output_produced);
-      info->encoded_bytes = static_cast<size_t>(encoded_bytes_tmp);
+      info.encoded_bytes = static_cast<size_t>(encoded_bytes_tmp);
       output_produced = true;
       force_sid = false;
     }
   }
-  info->encoded_timestamp = first_timestamp_in_buffer_;
-  info->payload_type = cng_payload_type_;
-  info->send_even_if_empty = true;
-  info->speech = false;
+  info.encoded_timestamp = rtp_timestamps_.front();
+  info.payload_type = cng_payload_type_;
+  info.send_even_if_empty = true;
+  info.speech = false;
+  return info;
 }
 
-void AudioEncoderCng::EncodeActive(size_t max_encoded_bytes,
-                                   uint8_t* encoded,
-                                   EncodedInfo* info) {
+AudioEncoder::EncodedInfo AudioEncoderCng::EncodeActive(
+    int frames_to_encode,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   const size_t samples_per_10ms_frame = SamplesPer10msFrame();
-  for (int i = 0; i < frames_in_buffer_; ++i) {
-    speech_encoder_->Encode(first_timestamp_in_buffer_,
-                            &speech_buffer_[i * samples_per_10ms_frame],
-                            samples_per_10ms_frame, max_encoded_bytes,
-                            encoded, info);
-    if (i < frames_in_buffer_ - 1) {
-      CHECK_EQ(info->encoded_bytes, 0u) << "Encoder delivered data too early.";
+  AudioEncoder::EncodedInfo info;
+  for (int i = 0; i < frames_to_encode; ++i) {
+    info = speech_encoder_->Encode(
+        rtp_timestamps_.front(), &speech_buffer_[i * samples_per_10ms_frame],
+        samples_per_10ms_frame, max_encoded_bytes, encoded);
+    if (i + 1 == frames_to_encode) {
+      CHECK_GT(info.encoded_bytes, 0u) << "Encoder didn't deliver data.";
+    } else {
+      CHECK_EQ(info.encoded_bytes, 0u) << "Encoder delivered data too early.";
     }
   }
+  return info;
 }
 
 size_t AudioEncoderCng::SamplesPer10msFrame() const {

@@ -17,69 +17,37 @@
 #include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
 #include "webrtc/modules/video_coding/main/source/encoded_frame.h"
 #include "webrtc/modules/video_coding/main/source/video_coding_impl.h"
+#include "webrtc/modules/video_coding/utility/include/quality_scaler.h"
 #include "webrtc/system_wrappers/interface/clock.h"
 #include "webrtc/system_wrappers/interface/logging.h"
 
 namespace webrtc {
 namespace vcm {
 
-class DebugRecorder {
- public:
-  DebugRecorder()
-      : cs_(CriticalSectionWrapper::CreateCriticalSection()), file_(NULL) {}
-
-  ~DebugRecorder() { Stop(); }
-
-  int Start(const char* file_name_utf8) {
-    CriticalSectionScoped cs(cs_.get());
-    if (file_)
-      fclose(file_);
-    file_ = fopen(file_name_utf8, "wb");
-    if (!file_)
-      return VCM_GENERAL_ERROR;
-    return VCM_OK;
-  }
-
-  void Stop() {
-    CriticalSectionScoped cs(cs_.get());
-    if (file_) {
-      fclose(file_);
-      file_ = NULL;
-    }
-  }
-
-  void Add(const I420VideoFrame& frame) {
-    CriticalSectionScoped cs(cs_.get());
-    if (file_)
-      PrintI420VideoFrame(frame, file_);
-  }
-
- private:
-  rtc::scoped_ptr<CriticalSectionWrapper> cs_;
-  FILE* file_ GUARDED_BY(cs_);
-};
-
 VideoSender::VideoSender(Clock* clock,
                          EncodedImageCallback* post_encode_callback,
-                         VideoEncoderRateObserver* encoder_rate_observer)
+                         VideoEncoderRateObserver* encoder_rate_observer,
+                         VCMQMSettingsCallback* qm_settings_callback)
     : clock_(clock),
-      recorder_(new DebugRecorder()),
       process_crit_sect_(CriticalSectionWrapper::CreateCriticalSection()),
       _sendCritSect(CriticalSectionWrapper::CreateCriticalSection()),
-      _encoder(),
+      _encoder(nullptr),
       _encodedFrameCallback(post_encode_callback),
       _nextFrameTypes(1, kVideoFrameDelta),
       _mediaOpt(clock_),
-      _sendStatsCallback(NULL),
+      _sendStatsCallback(nullptr),
       _codecDataBase(encoder_rate_observer),
       frame_dropper_enabled_(true),
       _sendStatsTimer(1000, clock_),
       current_codec_(),
-      qm_settings_callback_(NULL),
-      protection_callback_(NULL) {
+      qm_settings_callback_(qm_settings_callback),
+      protection_callback_(nullptr) {
+  encoder_params_ = {0, 0, 0, 0, false};
   // Allow VideoSender to be created on one thread but used on another, post
   // construction. This is currently how this class is being used by at least
   // one external project (diffractor).
+  _mediaOpt.EnableQM(qm_settings_callback_ != nullptr);
+  _mediaOpt.Reset();
   main_thread_.DetachFromThread();
 }
 
@@ -93,25 +61,22 @@ int32_t VideoSender::Process() {
   if (_sendStatsTimer.TimeUntilProcess() == 0) {
     _sendStatsTimer.Processed();
     CriticalSectionScoped cs(process_crit_sect_.get());
-    if (_sendStatsCallback != NULL) {
+    if (_sendStatsCallback != nullptr) {
       uint32_t bitRate = _mediaOpt.SentBitRate();
       uint32_t frameRate = _mediaOpt.SentFrameRate();
       _sendStatsCallback->SendStatistics(bitRate, frameRate);
     }
   }
 
-  return returnValue;
-}
+  {
+    rtc::CritScope cs(&params_lock_);
+    // Force an encoder parameters update, so that incoming frame rate is
+    // updated even if bandwidth hasn't changed.
+    encoder_params_.input_frame_rate = _mediaOpt.InputFrameRate();
+    encoder_params_.updated = true;
+  }
 
-// Reset send side to initial state - all components
-int32_t VideoSender::InitializeSender() {
-  DCHECK(main_thread_.CalledOnValidThread());
-  CriticalSectionScoped cs(_sendCritSect);
-  _codecDataBase.ResetSender();
-  _encoder = NULL;
-  _encodedFrameCallback.SetTransportCallback(NULL);
-  _mediaOpt.Reset();  // Resetting frame dropper
-  return VCM_OK;
+  return returnValue;
 }
 
 int64_t VideoSender::TimeUntilNextProcess() {
@@ -124,7 +89,7 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
                                        uint32_t maxPayloadSize) {
   DCHECK(main_thread_.CalledOnValidThread());
   CriticalSectionScoped cs(_sendCritSect);
-  if (sendCodec == NULL) {
+  if (sendCodec == nullptr) {
     return VCM_PARAMETER_ERROR;
   }
 
@@ -139,8 +104,8 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
   current_codec_ = *sendCodec;
 
   if (!ret) {
-    LOG(LS_ERROR) << "Failed to initialize the encoder with payload name "
-                  << sendCodec->plName << ". Error code: " << ret;
+    LOG(LS_ERROR) << "Failed to initialize set encoder with payload name '"
+                  << sendCodec->plName << "'.";
     return VCM_CODEC_ERROR;
   }
 
@@ -161,10 +126,10 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
 
   _mediaOpt.SetEncodingData(sendCodec->codecType,
                             sendCodec->maxBitrate * 1000,
-                            sendCodec->maxFramerate * 1000,
                             sendCodec->startBitrate * 1000,
                             sendCodec->width,
                             sendCodec->height,
+                            sendCodec->maxFramerate,
                             numLayers,
                             maxPayloadSize);
   return VCM_OK;
@@ -177,7 +142,7 @@ const VideoCodec& VideoSender::GetSendCodec() const {
 
 int32_t VideoSender::SendCodecBlocking(VideoCodec* currentSendCodec) const {
   CriticalSectionScoped cs(_sendCritSect);
-  if (currentSendCodec == NULL) {
+  if (currentSendCodec == nullptr) {
     return VCM_PARAMETER_ERROR;
   }
   return _codecDataBase.SendCodec(currentSendCodec) ? 0 : -1;
@@ -197,13 +162,13 @@ int32_t VideoSender::RegisterExternalEncoder(VideoEncoder* externalEncoder,
 
   CriticalSectionScoped cs(_sendCritSect);
 
-  if (externalEncoder == NULL) {
+  if (externalEncoder == nullptr) {
     bool wasSendCodec = false;
     const bool ret =
         _codecDataBase.DeregisterExternalEncoder(payloadType, &wasSendCodec);
     if (wasSendCodec) {
       // Make sure the VCM doesn't use the de-registered codec
-      _encoder = NULL;
+      _encoder = nullptr;
     }
     return ret ? 0 : -1;
   }
@@ -216,7 +181,7 @@ int32_t VideoSender::RegisterExternalEncoder(VideoEncoder* externalEncoder,
 int32_t VideoSender::CodecConfigParameters(uint8_t* buffer,
                                            int32_t size) const {
   CriticalSectionScoped cs(_sendCritSect);
-  if (_encoder != NULL) {
+  if (_encoder != nullptr) {
     return _encoder->CodecConfigParameters(buffer, size);
   }
   return VCM_UNINITIALIZED;
@@ -260,27 +225,42 @@ int VideoSender::FrameRate(unsigned int* framerate) const {
 int32_t VideoSender::SetChannelParameters(uint32_t target_bitrate,
                                           uint8_t lossRate,
                                           int64_t rtt) {
-  // TODO(tommi,mflodman): This method is called on the network thread via the
-  // OnNetworkChanged event (ViEEncoder::OnNetworkChanged). Could we instead
-  // post the updated information to the encoding thread and not grab a lock
-  // here?  This effectively means that the network thread will be blocked for
-  // as much as frame encoding period.
+  uint32_t target_rate =
+      _mediaOpt.SetTargetRates(target_bitrate, lossRate, rtt,
+                               protection_callback_, qm_settings_callback_);
 
-  CriticalSectionScoped sendCs(_sendCritSect);
-  uint32_t target_rate = _mediaOpt.SetTargetRates(target_bitrate,
-                                                  lossRate,
-                                                  rtt,
-                                                  protection_callback_,
-                                                  qm_settings_callback_);
   uint32_t input_frame_rate = _mediaOpt.InputFrameRate();
 
+  rtc::CritScope cs(&params_lock_);
+  encoder_params_ =
+      EncoderParameters{target_rate, lossRate, rtt, input_frame_rate, true};
+
+  return VCM_OK;
+}
+
+int32_t VideoSender::UpdateEncoderParameters() {
+  EncoderParameters params;
+  {
+    rtc::CritScope cs(&params_lock_);
+    params = encoder_params_;
+    encoder_params_.updated = false;
+  }
+
+  if (!params.updated || params.target_bitrate == 0)
+    return VCM_OK;
+
+  CriticalSectionScoped sendCs(_sendCritSect);
   int32_t ret = VCM_UNINITIALIZED;
   static_assert(VCM_UNINITIALIZED < 0, "VCM_UNINITIALIZED must be negative.");
 
-  if (_encoder != NULL) {
-    ret = _encoder->SetChannelParameters(lossRate, rtt);
+  if (params.input_frame_rate == 0) {
+    // No frame rate estimate available, use default.
+    params.input_frame_rate = current_codec_.maxFramerate;
+  }
+  if (_encoder != nullptr) {
+    ret = _encoder->SetChannelParameters(params.loss_rate, params.rtt);
     if (ret >= 0) {
-      ret = _encoder->SetRates(target_rate, input_frame_rate);
+      ret = _encoder->SetRates(params.target_bitrate, params.input_frame_rate);
     }
   }
   return ret;
@@ -304,62 +284,42 @@ int32_t VideoSender::RegisterSendStatisticsCallback(
   return VCM_OK;
 }
 
-// Register a video quality settings callback which will be called when frame
-// rate/dimensions need to be updated for video quality optimization
-int32_t VideoSender::RegisterVideoQMCallback(
-    VCMQMSettingsCallback* qm_settings_callback) {
-  CriticalSectionScoped cs(_sendCritSect);
-  DCHECK(qm_settings_callback_ == qm_settings_callback ||
-         !qm_settings_callback_ ||
-         !qm_settings_callback) << "Overwriting the previous callback?";
-  qm_settings_callback_ = qm_settings_callback;
-  _mediaOpt.EnableQM(qm_settings_callback_ != NULL);
-  return VCM_OK;
-}
-
 // Register a video protection callback which will be called to deliver the
 // requested FEC rate and NACK status (on/off).
+// Note: this callback is assumed to only be registered once and before it is
+// used in this class.
 int32_t VideoSender::RegisterProtectionCallback(
     VCMProtectionCallback* protection_callback) {
-  CriticalSectionScoped cs(_sendCritSect);
-  DCHECK(protection_callback_ == protection_callback ||
-         !protection_callback_ ||
-         !protection_callback) << "Overwriting the previous callback?";
+  DCHECK(protection_callback == nullptr || protection_callback_ == nullptr);
   protection_callback_ = protection_callback;
   return VCM_OK;
 }
 
 // Enable or disable a video protection method.
-void VideoSender::SetVideoProtection(bool enable,
-                                     VCMVideoProtection videoProtection) {
+void VideoSender::SetVideoProtection(VCMVideoProtection videoProtection) {
   CriticalSectionScoped cs(_sendCritSect);
   switch (videoProtection) {
     case kProtectionNone:
-      _mediaOpt.EnableProtectionMethod(enable, media_optimization::kNone);
+      _mediaOpt.SetProtectionMethod(media_optimization::kNone);
       break;
     case kProtectionNack:
-    case kProtectionNackSender:
-      _mediaOpt.EnableProtectionMethod(enable, media_optimization::kNack);
+      _mediaOpt.SetProtectionMethod(media_optimization::kNack);
       break;
     case kProtectionNackFEC:
-      _mediaOpt.EnableProtectionMethod(enable, media_optimization::kNackFec);
+      _mediaOpt.SetProtectionMethod(media_optimization::kNackFec);
       break;
     case kProtectionFEC:
-      _mediaOpt.EnableProtectionMethod(enable, media_optimization::kFec);
+      _mediaOpt.SetProtectionMethod(media_optimization::kFec);
       break;
-    case kProtectionNackReceiver:
-    case kProtectionKeyOnLoss:
-    case kProtectionKeyOnKeyLoss:
-      // Ignore receiver modes.
-      return;
   }
 }
 // Add one raw video frame to the encoder, blocking.
-int32_t VideoSender::AddVideoFrame(const I420VideoFrame& videoFrame,
+int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
                                    const VideoContentMetrics* contentMetrics,
                                    const CodecSpecificInfo* codecSpecificInfo) {
+  UpdateEncoderParameters();
   CriticalSectionScoped cs(_sendCritSect);
-  if (_encoder == NULL) {
+  if (_encoder == nullptr) {
     return VCM_UNINITIALIZED;
   }
   // TODO(holmer): Add support for dropping frames per stream. Currently we
@@ -368,6 +328,7 @@ int32_t VideoSender::AddVideoFrame(const I420VideoFrame& videoFrame,
     return VCM_OK;
   }
   if (_mediaOpt.DropFrame()) {
+    _encoder->OnDroppedFrame();
     return VCM_OK;
   }
   _mediaOpt.UpdateContentData(contentMetrics);
@@ -378,9 +339,16 @@ int32_t VideoSender::AddVideoFrame(const I420VideoFrame& videoFrame,
     LOG(LS_ERROR) << "Incoming frame doesn't match set resolution. Dropping.";
     return VCM_PARAMETER_ERROR;
   }
+  VideoFrame converted_frame = videoFrame;
+  if (converted_frame.native_handle() && !_encoder->SupportsNativeHandle()) {
+    // This module only supports software encoding.
+    // TODO(pbos): Offload conversion from the encoder thread.
+    converted_frame = converted_frame.ConvertNativeToI420Frame();
+    CHECK(!converted_frame.IsZeroSize())
+        << "Frame conversion failed, won't be able to encode frame.";
+  }
   int32_t ret =
-      _encoder->Encode(videoFrame, codecSpecificInfo, _nextFrameTypes);
-  recorder_->Add(videoFrame);
+      _encoder->Encode(converted_frame, codecSpecificInfo, _nextFrameTypes);
   if (ret < 0) {
     LOG(LS_ERROR) << "Failed to encode frame. Error code: " << ret;
     return ret;
@@ -388,6 +356,8 @@ int32_t VideoSender::AddVideoFrame(const I420VideoFrame& videoFrame,
   for (size_t i = 0; i < _nextFrameTypes.size(); ++i) {
     _nextFrameTypes[i] = kVideoFrameDelta;  // Default frame type.
   }
+  if (qm_settings_callback_)
+    qm_settings_callback_->SetTargetFramerate(_encoder->GetTargetFramerate());
   return VCM_OK;
 }
 
@@ -398,7 +368,7 @@ int32_t VideoSender::IntraFrameRequest(int stream_index) {
     return -1;
   }
   _nextFrameTypes[stream_index] = kVideoFrameKey;
-  if (_encoder != NULL && _encoder->InternalSource()) {
+  if (_encoder != nullptr && _encoder->InternalSource()) {
     // Try to request the frame if we have an external encoder with
     // internal source since AddVideoFrame never will be called.
     if (_encoder->RequestFrame(_nextFrameTypes) == WEBRTC_VIDEO_CODEC_OK) {
@@ -413,14 +383,6 @@ int32_t VideoSender::EnableFrameDropper(bool enable) {
   frame_dropper_enabled_ = enable;
   _mediaOpt.EnableFrameDropper(enable);
   return VCM_OK;
-}
-
-int VideoSender::StartDebugRecording(const char* file_name_utf8) {
-  return recorder_->Start(file_name_utf8);
-}
-
-void VideoSender::StopDebugRecording() {
-  recorder_->Stop();
 }
 
 void VideoSender::SuspendBelowMinBitrate() {

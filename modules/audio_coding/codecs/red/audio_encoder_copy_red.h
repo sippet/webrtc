@@ -13,6 +13,7 @@
 
 #include <vector>
 
+#include "webrtc/base/buffer.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
 
@@ -41,21 +42,18 @@ class AudioEncoderCopyRed : public AudioEncoder {
   int RtpTimestampRateHz() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
+  int GetTargetBitrate() const override;
   void SetTargetBitrate(int bits_per_second) override;
   void SetProjectedPacketLossRate(double fraction) override;
-
- protected:
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
   AudioEncoder* speech_encoder_;
   int red_payload_type_;
-  rtc::scoped_ptr<uint8_t[]> secondary_encoded_;
-  size_t secondary_allocated_;
+  rtc::Buffer secondary_encoded_;
   EncodedInfoLeaf secondary_info_;
 };
 

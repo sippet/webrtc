@@ -13,6 +13,7 @@
 #include "webrtc/common_types.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h"
+#include "webrtc/modules/remote_bitrate_estimator/remote_bitrate_estimator_single_stream.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_sender.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_rtcp_impl.h"
@@ -67,12 +68,10 @@ class RtcpFormatRembTest : public ::testing::Test {
         system_clock_(Clock::GetRealTimeClock()),
         receive_statistics_(ReceiveStatistics::Create(system_clock_)),
         remote_bitrate_observer_(),
-        remote_bitrate_estimator_(
-            RemoteBitrateEstimatorFactory().Create(
-                &remote_bitrate_observer_,
-                system_clock_,
-                kMimdControl,
-                kRemoteBitrateEstimatorMinBitrateBps)) {}
+        remote_bitrate_estimator_(new RemoteBitrateEstimatorSingleStream(
+            &remote_bitrate_observer_,
+            system_clock_,
+            kRemoteBitrateEstimatorMinBitrateBps)) {}
   void SetUp() override;
   void TearDown() override;
 
@@ -96,7 +95,7 @@ void RtcpFormatRembTest::SetUp() {
   dummy_rtp_rtcp_impl_ = new ModuleRtpRtcpImpl(configuration);
   rtcp_sender_ = new RTCPSender(0, false, system_clock_,
                                 receive_statistics_.get(), NULL);
-  rtcp_receiver_ = new RTCPReceiver(0, system_clock_, NULL, NULL, NULL,
+  rtcp_receiver_ = new RTCPReceiver(0, system_clock_, false, NULL, NULL, NULL,
                                     dummy_rtp_rtcp_impl_);
   test_transport_ = new TestTransport(rtcp_receiver_);
 

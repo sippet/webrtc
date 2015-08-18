@@ -20,17 +20,16 @@
 #include <list>
 #include <utility>
 
+#include "webrtc/base/criticalsection.h"
 #include "webrtc/base/scoped_ptr.h"
-#include "webrtc/modules/bitrate_controller/remb_suppressor.h"
 #include "webrtc/modules/bitrate_controller/send_side_bandwidth_estimation.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 
 namespace webrtc {
 
 class BitrateControllerImpl : public BitrateController {
  public:
   BitrateControllerImpl(Clock* clock, BitrateObserver* observer);
-  virtual ~BitrateControllerImpl();
+  virtual ~BitrateControllerImpl() {}
 
   bool AvailableBandwidth(uint32_t* bandwidth) const override;
 
@@ -45,11 +44,6 @@ class BitrateControllerImpl : public BitrateController {
   int64_t TimeUntilNextProcess() override;
   int32_t Process() override;
 
-  // Current bitrate actually being sent.
-  void SetBitrateSent(uint32_t bitrate_sent_bps) override;
-
-  void SetCodecMode(webrtc::VideoCodecMode mode) override;
-
  private:
   class RtcpBandwidthObserverImpl;
 
@@ -63,27 +57,28 @@ class BitrateControllerImpl : public BitrateController {
 
   void MaybeTriggerOnNetworkChanged();
 
+  // Returns true if the parameters have changed since the last call.
+  bool GetNetworkParameters(uint32_t* bitrate,
+                            uint8_t* fraction_loss,
+                            int64_t* rtt);
+
   void OnNetworkChanged(uint32_t bitrate,
                         uint8_t fraction_loss,  // 0 - 255.
-                        int64_t rtt)
-      EXCLUSIVE_LOCKS_REQUIRED(*critsect_);
+                        int64_t rtt) EXCLUSIVE_LOCKS_REQUIRED(critsect_);
 
   // Used by process thread.
   Clock* clock_;
   BitrateObserver* observer_;
   int64_t last_bitrate_update_ms_;
 
-  CriticalSectionWrapper* critsect_;
-  SendSideBandwidthEstimation bandwidth_estimation_ GUARDED_BY(*critsect_);
-  bool enforce_min_bitrate_ GUARDED_BY(*critsect_);
-  uint32_t reserved_bitrate_bps_ GUARDED_BY(*critsect_);
+  mutable rtc::CriticalSection critsect_;
+  SendSideBandwidthEstimation bandwidth_estimation_ GUARDED_BY(critsect_);
+  uint32_t reserved_bitrate_bps_ GUARDED_BY(critsect_);
 
-  uint32_t last_bitrate_bps_ GUARDED_BY(*critsect_);
-  uint8_t last_fraction_loss_ GUARDED_BY(*critsect_);
-  int64_t last_rtt_ms_ GUARDED_BY(*critsect_);
-  bool last_enforce_min_bitrate_ GUARDED_BY(*critsect_);
-  uint32_t last_reserved_bitrate_bps_ GUARDED_BY(*critsect_);
-  rtc::scoped_ptr<RembSuppressor> remb_suppressor_ GUARDED_BY(*critsect_);
+  uint32_t last_bitrate_bps_ GUARDED_BY(critsect_);
+  uint8_t last_fraction_loss_ GUARDED_BY(critsect_);
+  int64_t last_rtt_ms_ GUARDED_BY(critsect_);
+  uint32_t last_reserved_bitrate_bps_ GUARDED_BY(critsect_);
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(BitrateControllerImpl);
 };

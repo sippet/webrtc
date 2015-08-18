@@ -18,21 +18,116 @@
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/base/thread_checker.h"
 #include "webrtc/modules/interface/module.h"
-#include "webrtc/video_engine/include/vie_base.h"
 
 namespace webrtc {
 
 class Clock;
-class CpuOveruseObserver;
+
+// CpuOveruseObserver is called when a system overuse is detected and
+// VideoEngine cannot keep up the encoding frequency.
+class CpuOveruseObserver {
+ public:
+  // Called as soon as an overuse is detected.
+  virtual void OveruseDetected() = 0;
+  // Called periodically when the system is not overused any longer.
+  virtual void NormalUsage() = 0;
+
+ protected:
+  virtual ~CpuOveruseObserver() {}
+};
+
+struct CpuOveruseOptions {
+  CpuOveruseOptions()
+      : enable_capture_jitter_method(false),
+        low_capture_jitter_threshold_ms(20.0f),
+        high_capture_jitter_threshold_ms(30.0f),
+        enable_encode_usage_method(true),
+        low_encode_usage_threshold_percent(55),
+        high_encode_usage_threshold_percent(85),
+        low_encode_time_rsd_threshold(-1),
+        high_encode_time_rsd_threshold(-1),
+        enable_extended_processing_usage(true),
+        frame_timeout_interval_ms(1500),
+        min_frame_samples(120),
+        min_process_count(3),
+        high_threshold_consecutive_count(2) {}
+
+  // Method based on inter-arrival jitter of captured frames.
+  bool enable_capture_jitter_method;
+  float low_capture_jitter_threshold_ms;  // Threshold for triggering underuse.
+  float high_capture_jitter_threshold_ms; // Threshold for triggering overuse.
+  // Method based on encode time of frames.
+  bool enable_encode_usage_method;
+  int low_encode_usage_threshold_percent;  // Threshold for triggering underuse.
+  int high_encode_usage_threshold_percent; // Threshold for triggering overuse.
+  // TODO(asapersson): Remove options, not used.
+  int low_encode_time_rsd_threshold;   // Additional threshold for triggering
+                                       // underuse (used in addition to
+                                       // threshold above if configured).
+  int high_encode_time_rsd_threshold;  // Additional threshold for triggering
+                                       // overuse (used in addition to
+                                       // threshold above if configured).
+  bool enable_extended_processing_usage;  // Include a larger time span (in
+                                          // addition to encode time) for
+                                          // measuring the processing time of a
+                                          // frame.
+  // General settings.
+  int frame_timeout_interval_ms;  // The maximum allowed interval between two
+                                  // frames before resetting estimations.
+  int min_frame_samples;  // The minimum number of frames required.
+  int min_process_count;  // The number of initial process times required before
+                          // triggering an overuse/underuse.
+  int high_threshold_consecutive_count; // The number of consecutive checks
+                                        // above the high threshold before
+                                        // triggering an overuse.
+
+  bool Equals(const CpuOveruseOptions& o) const {
+    return enable_capture_jitter_method == o.enable_capture_jitter_method &&
+        low_capture_jitter_threshold_ms == o.low_capture_jitter_threshold_ms &&
+        high_capture_jitter_threshold_ms ==
+        o.high_capture_jitter_threshold_ms &&
+        enable_encode_usage_method == o.enable_encode_usage_method &&
+        low_encode_usage_threshold_percent ==
+        o.low_encode_usage_threshold_percent &&
+        high_encode_usage_threshold_percent ==
+        o.high_encode_usage_threshold_percent &&
+        low_encode_time_rsd_threshold == o.low_encode_time_rsd_threshold &&
+        high_encode_time_rsd_threshold == o.high_encode_time_rsd_threshold &&
+        enable_extended_processing_usage ==
+        o.enable_extended_processing_usage &&
+        frame_timeout_interval_ms == o.frame_timeout_interval_ms &&
+        min_frame_samples == o.min_frame_samples &&
+        min_process_count == o.min_process_count &&
+        high_threshold_consecutive_count == o.high_threshold_consecutive_count;
+  }
+};
+
+struct CpuOveruseMetrics {
+  CpuOveruseMetrics()
+      : capture_jitter_ms(-1),
+        avg_encode_time_ms(-1),
+        encode_usage_percent(-1) {}
+
+  int capture_jitter_ms;  // The current estimated jitter in ms based on
+                          // incoming captured frames.
+  int avg_encode_time_ms;   // The average encode time in ms.
+  int encode_usage_percent; // The average encode time divided by the average
+                            // time difference between incoming captured frames.
+};
+
+class CpuOveruseMetricsObserver {
+ public:
+  virtual ~CpuOveruseMetricsObserver() {}
+  virtual void CpuOveruseMetricsUpdated(const CpuOveruseMetrics& metrics) = 0;
+};
 
 // TODO(pbos): Move this somewhere appropriate.
 class Statistics {
  public:
-  Statistics();
+  explicit Statistics(const CpuOveruseOptions& options);
 
   void AddSample(float sample_ms);
   void Reset();
-  void SetOptions(const CpuOveruseOptions& options);
 
   float Mean() const;
   float StdDev() const;
@@ -44,7 +139,7 @@ class Statistics {
 
   float sum_;
   uint64_t count_;
-  CpuOveruseOptions options_;
+  const CpuOveruseOptions options_;
   rtc::scoped_ptr<rtc::ExpFilter> filtered_samples_;
   rtc::scoped_ptr<rtc::ExpFilter> filtered_variance_;
 };
@@ -53,21 +148,13 @@ class Statistics {
 class OveruseFrameDetector : public Module {
  public:
   OveruseFrameDetector(Clock* clock,
+                       const CpuOveruseOptions& options,
+                       CpuOveruseObserver* overuse_observer,
                        CpuOveruseMetricsObserver* metrics_observer);
   ~OveruseFrameDetector();
 
-  // Registers an observer receiving overuse and underuse callbacks. Set
-  // 'observer' to NULL to disable callbacks.
-  void SetObserver(CpuOveruseObserver* observer);
-
-  // Sets options for overuse detection.
-  void SetOptions(const CpuOveruseOptions& options);
-
   // Called for each captured frame.
   void FrameCaptured(int width, int height, int64_t capture_time_ms);
-
-  // Called when the processing of a captured frame is started.
-  void FrameProcessingStarted();
 
   // Called for each encoded frame.
   void FrameEncoded(int encode_time_ms);
@@ -76,7 +163,6 @@ class OveruseFrameDetector : public Module {
   void FrameSent(int64_t capture_time_ms);
 
   // Only public for testing.
-  int CaptureQueueDelayMsPerS() const;
   int LastProcessingTimeMs() const;
   int FramesInQueue() const;
 
@@ -87,7 +173,6 @@ class OveruseFrameDetector : public Module {
  private:
   class EncodeTimeAvg;
   class SendProcessingUsage;
-  class CaptureQueueDelay;
   class FrameQueue;
 
   void UpdateCpuOveruseMetrics() EXCLUSIVE_LOCKS_REQUIRED(crit_);
@@ -114,10 +199,10 @@ class OveruseFrameDetector : public Module {
   // processing contends with reading stats and the processing thread.
   mutable rtc::CriticalSection crit_;
 
-  // Observer getting overuse reports.
-  CpuOveruseObserver* observer_ GUARDED_BY(crit_);
+  const CpuOveruseOptions options_;
 
-  CpuOveruseOptions options_ GUARDED_BY(crit_);
+  // Observer getting overuse reports.
+  CpuOveruseObserver* const observer_;
 
   // Stats metrics.
   CpuOveruseMetricsObserver* const metrics_observer_;
@@ -151,9 +236,6 @@ class OveruseFrameDetector : public Module {
   const rtc::scoped_ptr<FrameQueue> frame_queue_ GUARDED_BY(crit_);
 
   int64_t last_sample_time_ms_;  // Only accessed by one thread.
-
-  const rtc::scoped_ptr<CaptureQueueDelay> capture_queue_delay_
-      GUARDED_BY(crit_);
 
   rtc::ThreadChecker processing_thread_;
 

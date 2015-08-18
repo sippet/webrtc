@@ -211,26 +211,14 @@ int32_t FileRecorderImpl::RecordAudioToFile(
         }
     } else {
         int outLen = 0;
-        if(ptrAudioFrame->num_channels_ == 2)
-        {
-            // ptrAudioFrame contains interleaved stereo audio.
-            _audioResampler.ResetIfNeeded(ptrAudioFrame->sample_rate_hz_,
-                                          codec_info_.plfreq,
-                                          kResamplerSynchronousStereo);
-            _audioResampler.Push(ptrAudioFrame->data_,
-                                 ptrAudioFrame->samples_per_channel_ *
-                                 ptrAudioFrame->num_channels_,
-                                 (int16_t*)_audioBuffer,
-                                 MAX_AUDIO_BUFFER_IN_BYTES, outLen);
-        } else {
-            _audioResampler.ResetIfNeeded(ptrAudioFrame->sample_rate_hz_,
-                                          codec_info_.plfreq,
-                                          kResamplerSynchronous);
-            _audioResampler.Push(ptrAudioFrame->data_,
-                                 ptrAudioFrame->samples_per_channel_,
-                                 (int16_t*)_audioBuffer,
-                                 MAX_AUDIO_BUFFER_IN_BYTES, outLen);
-        }
+        _audioResampler.ResetIfNeeded(ptrAudioFrame->sample_rate_hz_,
+                                      codec_info_.plfreq,
+                                      ptrAudioFrame->num_channels_);
+        _audioResampler.Push(ptrAudioFrame->data_,
+                             ptrAudioFrame->samples_per_channel_ *
+                             ptrAudioFrame->num_channels_,
+                             (int16_t*)_audioBuffer,
+                             MAX_AUDIO_BUFFER_IN_BYTES, outLen);
         encodedLenInBytes = outLen * sizeof(int16_t);
     }
 
@@ -239,11 +227,7 @@ int32_t FileRecorderImpl::RecordAudioToFile(
     // will be available. Wait until then.
     if (encodedLenInBytes)
     {
-        uint16_t msOfData =
-            ptrAudioFrame->samples_per_channel_ /
-            uint16_t(ptrAudioFrame->sample_rate_hz_ / 1000);
-        if (WriteEncodedAudioData(_audioBuffer, encodedLenInBytes, msOfData,
-                                  playoutTS) == -1)
+        if (WriteEncodedAudioData(_audioBuffer, encodedLenInBytes) == -1)
         {
             return -1;
         }
@@ -276,11 +260,8 @@ int32_t FileRecorderImpl::codec_info(CodecInst& codecInst) const
     return 0;
 }
 
-int32_t FileRecorderImpl::WriteEncodedAudioData(
-    const int8_t* audioBuffer,
-    size_t bufferLength,
-    uint16_t /*millisecondsOfData*/,
-    const TickTime* /*playoutTS*/)
+int32_t FileRecorderImpl::WriteEncodedAudioData(const int8_t* audioBuffer,
+                                                size_t bufferLength)
 {
     return _moduleFile->IncomingAudioData(audioBuffer, bufferLength);
 }

@@ -7,14 +7,13 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#include <assert.h>
-
 #include <algorithm>
 #include <sstream>
 #include <string>
 
 #include "testing/gtest/include/gtest/gtest.h"
 
+#include "webrtc/base/checks.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/call.h"
@@ -45,7 +44,7 @@ namespace webrtc {
 
 class CallPerfTest : public test::CallTest {
  protected:
-  void TestAudioVideoSync(bool fec);
+  void TestAudioVideoSync(bool fec, bool create_audio_first);
 
   void TestCpuOveruse(LoadObserver::Load tested_load, int encode_delay_ms);
 
@@ -60,17 +59,16 @@ class CallPerfTest : public test::CallTest {
 class SyncRtcpObserver : public test::RtpRtcpObserver {
  public:
   explicit SyncRtcpObserver(const FakeNetworkPipe::Config& config)
-      : test::RtpRtcpObserver(CallPerfTest::kLongTimeoutMs, config),
-        crit_(CriticalSectionWrapper::CreateCriticalSection()) {}
+      : test::RtpRtcpObserver(CallPerfTest::kLongTimeoutMs, config) {}
 
   Action OnSendRtcp(const uint8_t* packet, size_t length) override {
     RTCPUtility::RTCPParserV2 parser(packet, length, true);
     EXPECT_TRUE(parser.IsValid());
 
     for (RTCPUtility::RTCPPacketTypes packet_type = parser.Begin();
-         packet_type != RTCPUtility::kRtcpNotValidCode;
+         packet_type != RTCPUtility::RTCPPacketTypes::kInvalid;
          packet_type = parser.Iterate()) {
-      if (packet_type == RTCPUtility::kRtcpSrCode) {
+      if (packet_type == RTCPUtility::RTCPPacketTypes::kSr) {
         const RTCPUtility::RTCPPacket& packet = parser.Packet();
         RtcpMeasurement ntp_rtp_pair(
             packet.SR.NTPMostSignificant,
@@ -83,7 +81,7 @@ class SyncRtcpObserver : public test::RtpRtcpObserver {
   }
 
   int64_t RtpTimestampToNtp(uint32_t timestamp) const {
-    CriticalSectionScoped lock(crit_.get());
+    rtc::CritScope lock(&crit_);
     int64_t timestamp_in_ms = -1;
     if (ntp_rtp_pairs_.size() == 2) {
       // TODO(stefan): We can't EXPECT_TRUE on this call due to a bug in the
@@ -97,7 +95,7 @@ class SyncRtcpObserver : public test::RtpRtcpObserver {
 
  private:
   void StoreNtpRtpPair(RtcpMeasurement ntp_rtp_pair) {
-    CriticalSectionScoped lock(crit_.get());
+    rtc::CritScope lock(&crit_);
     for (RtcpList::iterator it = ntp_rtp_pairs_.begin();
          it != ntp_rtp_pairs_.end();
          ++it) {
@@ -115,7 +113,7 @@ class SyncRtcpObserver : public test::RtpRtcpObserver {
     ntp_rtp_pairs_.push_front(ntp_rtp_pair);
   }
 
-  const rtc::scoped_ptr<CriticalSectionWrapper> crit_;
+  mutable rtc::CriticalSection crit_;
   RtcpList ntp_rtp_pairs_ GUARDED_BY(crit_);
 };
 
@@ -137,7 +135,7 @@ class VideoRtcpAndSyncObserver : public SyncRtcpObserver, public VideoRenderer {
         creation_time_ms_(clock_->TimeInMilliseconds()),
         first_time_in_sync_(-1) {}
 
-  void RenderFrame(const I420VideoFrame& video_frame,
+  void RenderFrame(const VideoFrame& video_frame,
                    int time_to_render_ms) override {
     int64_t now_ms = clock_->TimeInMilliseconds();
     uint32_t playout_timestamp = 0;
@@ -191,15 +189,18 @@ class VideoRtcpAndSyncObserver : public SyncRtcpObserver, public VideoRenderer {
   int64_t first_time_in_sync_;
 };
 
-void CallPerfTest::TestAudioVideoSync(bool fec) {
+void CallPerfTest::TestAudioVideoSync(bool fec, bool create_audio_first) {
+  const char* kSyncGroup = "av_sync";
   class AudioPacketReceiver : public PacketReceiver {
    public:
     AudioPacketReceiver(int channel, VoENetwork* voe_network)
         : channel_(channel),
           voe_network_(voe_network),
           parser_(RtpHeaderParser::Create()) {}
-    DeliveryStatus DeliverPacket(const uint8_t* packet,
+    DeliveryStatus DeliverPacket(MediaType media_type, const uint8_t* packet,
                                  size_t length) override {
+      EXPECT_TRUE(media_type == MediaType::ANY ||
+                  media_type == MediaType::AUDIO);
       int ret;
       if (parser_->IsRtcp(packet, length)) {
         ret = voe_network_->ReceivedRTCPPacket(channel_, packet, length);
@@ -226,7 +227,7 @@ void CallPerfTest::TestAudioVideoSync(bool fec) {
   ASSERT_STRNE("", audio_filename.c_str());
   test::FakeAudioDevice fake_audio_device(Clock::GetRealTimeClock(),
                                           audio_filename);
-  EXPECT_EQ(0, voe_base->Init(&fake_audio_device, NULL));
+  EXPECT_EQ(0, voe_base->Init(&fake_audio_device, nullptr));
   int channel = voe_base->CreateChannel();
 
   FakeNetworkPipe::Config net_config;
@@ -269,9 +270,23 @@ void CallPerfTest::TestAudioVideoSync(bool fec) {
   }
   receive_configs_[0].rtp.nack.rtp_history_ms = 1000;
   receive_configs_[0].renderer = &observer;
-  receive_configs_[0].audio_channel_id = channel;
+  receive_configs_[0].sync_group = kSyncGroup;
 
-  CreateStreams();
+  AudioReceiveStream::Config audio_config;
+  audio_config.voe_channel_id = channel;
+  audio_config.sync_group = kSyncGroup;
+
+  AudioReceiveStream* audio_receive_stream = nullptr;
+
+  if (create_audio_first) {
+    audio_receive_stream =
+        receiver_call_->CreateAudioReceiveStream(audio_config);
+    CreateStreams();
+  } else {
+    CreateStreams();
+    audio_receive_stream =
+        receiver_call_->CreateAudioReceiveStream(audio_config);
+  }
 
   CreateFrameGeneratorCapturer();
 
@@ -302,15 +317,21 @@ void CallPerfTest::TestAudioVideoSync(bool fec) {
 
   DestroyStreams();
 
+  receiver_call_->DestroyAudioReceiveStream(audio_receive_stream);
+
   VoiceEngine::Delete(voice_engine);
 }
 
-TEST_F(CallPerfTest, PlaysOutAudioAndVideoInSync) {
-  TestAudioVideoSync(false);
+TEST_F(CallPerfTest, PlaysOutAudioAndVideoInSyncWithAudioCreatedFirst) {
+  TestAudioVideoSync(false, true);
+}
+
+TEST_F(CallPerfTest, PlaysOutAudioAndVideoInSyncWithVideoCreatedFirst) {
+  TestAudioVideoSync(false, false);
 }
 
 TEST_F(CallPerfTest, PlaysOutAudioAndVideoInSyncWithFec) {
-  TestAudioVideoSync(true);
+  TestAudioVideoSync(true, false);
 }
 
 void CallPerfTest::TestCaptureNtpTime(const FakeNetworkPipe::Config& net_config,
@@ -330,12 +351,12 @@ void CallPerfTest::TestCaptureNtpTime(const FakeNetworkPipe::Config& net_config,
           start_time_ms_(start_time_ms),
           run_time_ms_(run_time_ms),
           creation_time_ms_(clock_->TimeInMilliseconds()),
-          capturer_(NULL),
+          capturer_(nullptr),
           rtp_start_timestamp_set_(false),
           rtp_start_timestamp_(0) {}
 
    private:
-    void RenderFrame(const I420VideoFrame& video_frame,
+    void RenderFrame(const VideoFrame& video_frame,
                      int time_to_render_ms) override {
       if (video_frame.ntp_time_ms() <= 0) {
         // Haven't got enough RTCP SR in order to calculate the capture ntp
@@ -507,12 +528,13 @@ void CallPerfTest::TestMinTransmitBitrate(bool pad_to_min_bitrate) {
   static const int kMinAcceptableTransmitBitrate = 130;
   static const int kMaxAcceptableTransmitBitrate = 170;
   static const int kNumBitrateObservationsInRange = 100;
+  static const int kAcceptableBitrateErrorMargin = 15;  // +- 7
   class BitrateObserver : public test::EndToEndTest, public PacketReceiver {
    public:
     explicit BitrateObserver(bool using_min_transmit_bitrate)
         : EndToEndTest(kLongTimeoutMs),
-          send_stream_(NULL),
-          send_transport_receiver_(NULL),
+          send_stream_(nullptr),
+          send_transport_receiver_(nullptr),
           pad_to_min_bitrate_(using_min_transmit_bitrate),
           num_bitrate_observations_in_range_(0) {}
 
@@ -523,11 +545,11 @@ void CallPerfTest::TestMinTransmitBitrate(bool pad_to_min_bitrate) {
       test::RtpRtcpObserver::SetReceivers(this, receive_transport_receiver);
     }
 
-    DeliveryStatus DeliverPacket(const uint8_t* packet,
+    DeliveryStatus DeliverPacket(MediaType media_type, const uint8_t* packet,
                                  size_t length) override {
       VideoSendStream::Stats stats = send_stream_->GetStats();
       if (stats.substreams.size() > 0) {
-        assert(stats.substreams.size() == 1);
+        DCHECK_EQ(1u, stats.substreams.size());
         int bitrate_kbps =
             stats.substreams.begin()->second.total_bitrate_bps / 1000;
         if (bitrate_kbps > 0) {
@@ -546,8 +568,10 @@ void CallPerfTest::TestMinTransmitBitrate(bool pad_to_min_bitrate) {
             }
           } else {
             // Expect bitrate stats to roughly match the max encode bitrate.
-            if (bitrate_kbps > kMaxEncodeBitrateKbps - 5 &&
-                bitrate_kbps < kMaxEncodeBitrateKbps + 5) {
+            if (bitrate_kbps > (kMaxEncodeBitrateKbps -
+                                kAcceptableBitrateErrorMargin / 2) &&
+                bitrate_kbps < (kMaxEncodeBitrateKbps +
+                                kAcceptableBitrateErrorMargin / 2)) {
               ++num_bitrate_observations_in_range_;
             }
           }
@@ -556,7 +580,8 @@ void CallPerfTest::TestMinTransmitBitrate(bool pad_to_min_bitrate) {
             observation_complete_->Set();
         }
       }
-      return send_transport_receiver_->DeliverPacket(packet, length);
+      return send_transport_receiver_->DeliverPacket(media_type, packet,
+                                                     length);
     }
 
     void OnStreamsCreated(
@@ -571,7 +596,7 @@ void CallPerfTest::TestMinTransmitBitrate(bool pad_to_min_bitrate) {
       if (pad_to_min_bitrate_) {
         encoder_config->min_transmit_bitrate_bps = kMinTransmitBitrateBps;
       } else {
-        assert(encoder_config->min_transmit_bitrate_bps == 0);
+        DCHECK_EQ(0, encoder_config->min_transmit_bitrate_bps);
       }
     }
 
@@ -607,7 +632,9 @@ TEST_F(CallPerfTest, KeepsHighBitrateWhenReconfiguringSender) {
         : EndToEndTest(kDefaultTimeoutMs),
           FakeEncoder(Clock::GetRealTimeClock()),
           time_to_reconfigure_(webrtc::EventWrapper::Create()),
-          encoder_inits_(0) {}
+          encoder_inits_(0),
+          last_set_bitrate_(0),
+          send_stream_(nullptr) {}
 
     int32_t InitEncode(const VideoCodec* config,
                        int32_t number_of_cores,
@@ -640,7 +667,7 @@ TEST_F(CallPerfTest, KeepsHighBitrateWhenReconfiguringSender) {
 
     Call::Config GetSenderCallConfig() override {
       Call::Config config = EndToEndTest::GetSenderCallConfig();
-      config.stream_bitrates.start_bitrate_bps = kInitialBitrateKbps * 1000;
+      config.bitrate_config.start_bitrate_bps = kInitialBitrateKbps * 1000;
       return config;
     }
 

@@ -11,6 +11,7 @@
 #include "webrtc/modules/audio_coding/codecs/opus/interface/audio_encoder_opus.h"
 
 #include "webrtc/base/checks.h"
+#include "webrtc/common_types.h"
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 
 namespace webrtc {
@@ -66,8 +67,6 @@ bool AudioEncoderOpus::Config::IsOk() const {
     return false;
   if (complexity < 0 || complexity > 10)
     return false;
-  if (dtx_enabled && application != kVoip)
-    return false;
   return true;
 }
 
@@ -115,10 +114,10 @@ int AudioEncoderOpus::NumChannels() const {
 size_t AudioEncoderOpus::MaxEncodedBytes() const {
   // Calculate the number of bytes we expect the encoder to produce,
   // then multiply by two to give a wide margin for error.
-  int frame_size_ms = num_10ms_frames_per_packet_ * 10;
-  int bytes_per_millisecond = bitrate_bps_ / (1000 * 8) + 1;
+  size_t bytes_per_millisecond =
+      static_cast<size_t>(bitrate_bps_ / (1000 * 8) + 1);
   size_t approx_encoded_bytes =
-      static_cast<size_t>(frame_size_ms * bytes_per_millisecond);
+      num_10ms_frames_per_packet_ * 10 * bytes_per_millisecond;
   return 2 * approx_encoded_bytes;
 }
 
@@ -128,6 +127,10 @@ int AudioEncoderOpus::Num10MsFramesInNextPacket() const {
 
 int AudioEncoderOpus::Max10MsFramesInAPacket() const {
   return num_10ms_frames_per_packet_;
+}
+
+int AudioEncoderOpus::GetTargetBitrate() const {
+  return bitrate_bps_;
 }
 
 void AudioEncoderOpus::SetTargetBitrate(int bits_per_second) {
@@ -183,36 +186,84 @@ void AudioEncoderOpus::SetProjectedPacketLossRate(double fraction) {
   }
 }
 
-void AudioEncoderOpus::EncodeInternal(uint32_t rtp_timestamp,
-                                      const int16_t* audio,
-                                      size_t max_encoded_bytes,
-                                      uint8_t* encoded,
-                                      EncodedInfo* info) {
+AudioEncoder::EncodedInfo AudioEncoderOpus::EncodeInternal(
+    uint32_t rtp_timestamp,
+    const int16_t* audio,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   if (input_buffer_.empty())
     first_timestamp_in_buffer_ = rtp_timestamp;
   input_buffer_.insert(input_buffer_.end(), audio,
                        audio + samples_per_10ms_frame_);
   if (input_buffer_.size() < (static_cast<size_t>(num_10ms_frames_per_packet_) *
                               samples_per_10ms_frame_)) {
-    info->encoded_bytes = 0;
-    return;
+    return EncodedInfo();
   }
   CHECK_EQ(input_buffer_.size(),
            static_cast<size_t>(num_10ms_frames_per_packet_) *
            samples_per_10ms_frame_);
-  int16_t r = WebRtcOpus_Encode(
+  int status = WebRtcOpus_Encode(
       inst_, &input_buffer_[0],
       rtc::CheckedDivExact(CastInt16(input_buffer_.size()),
                            static_cast<int16_t>(num_channels_)),
       ClampInt16(max_encoded_bytes), encoded);
-  CHECK_GE(r, 0);  // Fails only if fed invalid data.
+  CHECK_GE(status, 0);  // Fails only if fed invalid data.
   input_buffer_.clear();
-  info->encoded_bytes = r;
-  info->encoded_timestamp = first_timestamp_in_buffer_;
-  info->payload_type = payload_type_;
-  // Allows Opus to send empty packets.
-  info->send_even_if_empty = true;
-  info->speech = r > 0;
+  EncodedInfo info;
+  info.encoded_bytes = static_cast<size_t>(status);
+  info.encoded_timestamp = first_timestamp_in_buffer_;
+  info.payload_type = payload_type_;
+  info.send_even_if_empty = true;  // Allows Opus to send empty packets.
+  info.speech = (status > 0);
+  return info;
+}
+
+namespace {
+AudioEncoderOpus::Config CreateConfig(const CodecInst& codec_inst) {
+  AudioEncoderOpus::Config config;
+  config.frame_size_ms = rtc::CheckedDivExact(codec_inst.pacsize, 48);
+  config.num_channels = codec_inst.channels;
+  config.bitrate_bps = codec_inst.rate;
+  config.payload_type = codec_inst.pltype;
+  config.application = (config.num_channels == 1 ? AudioEncoderOpus::kVoip
+                                                 : AudioEncoderOpus::kAudio);
+  return config;
+}
+}  // namespace
+
+AudioEncoderMutableOpus::AudioEncoderMutableOpus(const CodecInst& codec_inst)
+    : AudioEncoderMutableImpl<AudioEncoderOpus>(CreateConfig(codec_inst)) {
+}
+
+bool AudioEncoderMutableOpus::SetFec(bool enable) {
+  auto conf = config();
+  conf.fec_enabled = enable;
+  return Reconstruct(conf);
+}
+
+bool AudioEncoderMutableOpus::SetDtx(bool enable) {
+  auto conf = config();
+  conf.dtx_enabled = enable;
+  return Reconstruct(conf);
+}
+
+bool AudioEncoderMutableOpus::SetApplication(Application application) {
+  auto conf = config();
+  switch (application) {
+    case kApplicationSpeech:
+      conf.application = AudioEncoderOpus::kVoip;
+      break;
+    case kApplicationAudio:
+      conf.application = AudioEncoderOpus::kAudio;
+      break;
+  }
+  return Reconstruct(conf);
+}
+
+bool AudioEncoderMutableOpus::SetMaxPlaybackRate(int frequency_hz) {
+  auto conf = config();
+  conf.max_playback_rate_hz = frequency_hz;
+  return Reconstruct(conf);
 }
 
 }  // namespace webrtc

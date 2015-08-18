@@ -17,12 +17,11 @@
 #ifdef WEBRTC_LINUX
 #include <linux/unistd.h>
 #include <sched.h>
-#include <sys/prctl.h>
-#include <sys/syscall.h>
 #include <sys/types.h>
 #endif
 
 #include "webrtc/base/checks.h"
+#include "webrtc/base/platform_thread.h"
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/interface/event_wrapper.h"
 #include "webrtc/system_wrappers/interface/sleep.h"
@@ -62,21 +61,20 @@ int ConvertToSystemPriority(ThreadPriority priority, int min_prio,
   return low_prio;
 }
 
+// static
 void* ThreadPosix::StartThread(void* param) {
   static_cast<ThreadPosix*>(param)->Run();
   return 0;
 }
 
-ThreadPosix::ThreadPosix(ThreadRunFunction func, ThreadObj obj,
-                         ThreadPriority prio, const char* thread_name)
+ThreadPosix::ThreadPosix(ThreadRunFunction func, void* obj,
+                         const char* thread_name)
     : run_function_(func),
       obj_(obj),
-      prio_(prio),
-      started_(false),
-      stop_event_(true, false),
+      stop_event_(false, false),
       name_(thread_name ? thread_name : "webrtc"),
       thread_(0) {
-  DCHECK(name_.length() < kThreadMaxNameLength);
+  DCHECK(name_.length() < 64);
 }
 
 uint32_t ThreadWrapper::GetThreadId() {
@@ -91,40 +89,36 @@ ThreadPosix::~ThreadPosix() {
 // here.
 bool ThreadPosix::Start() {
   DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(!thread_) << "Thread already started?";
 
   ThreadAttributes attr;
   // Set the stack stack size to 1M.
   pthread_attr_setstacksize(&attr, 1024 * 1024);
-
   CHECK_EQ(0, pthread_create(&thread_, &attr, &StartThread, this));
-  started_ = true;
   return true;
 }
 
 bool ThreadPosix::Stop() {
   DCHECK(thread_checker_.CalledOnValidThread());
-  if (!started_)
+  if (!thread_)
     return true;
 
   stop_event_.Set();
   CHECK_EQ(0, pthread_join(thread_, nullptr));
-  started_ = false;
-  stop_event_.Reset();
+  thread_ = 0;
 
   return true;
 }
 
-void ThreadPosix::Run() {
-  if (!name_.empty()) {
-    // Setting the thread name may fail (harmlessly) if running inside a
-    // sandbox. Ignore failures if they happen.
-#if defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
-    prctl(PR_SET_NAME, reinterpret_cast<unsigned long>(name_.c_str()));
-#elif defined(WEBRTC_MAC) || defined(WEBRTC_IOS)
-    pthread_setname_np(name_.substr(0, 63).c_str());
-#endif
-  }
-
+bool ThreadPosix::SetPriority(ThreadPriority priority) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  if (!thread_)
+    return false;
+#if defined(WEBRTC_CHROMIUM_BUILD) && defined(WEBRTC_LINUX)
+  // TODO(tommi): Switch to the same mechanism as Chromium uses for
+  // changing thread priorities.
+  return true;
+#else
 #ifdef WEBRTC_THREAD_RR
   const int policy = SCHED_RR;
 #else
@@ -132,18 +126,32 @@ void ThreadPosix::Run() {
 #endif
   const int min_prio = sched_get_priority_min(policy);
   const int max_prio = sched_get_priority_max(policy);
-  if ((min_prio == -1) || (max_prio == -1)) {
+  if (min_prio == -1 || max_prio == -1) {
     WEBRTC_TRACE(kTraceError, kTraceUtility, -1,
                  "unable to retreive min or max priority for threads");
+    return false;
   }
 
-  if (max_prio - min_prio > 2) {
-    sched_param param;
-    param.sched_priority = ConvertToSystemPriority(prio_, min_prio, max_prio);
-    if (pthread_setschedparam(pthread_self(), policy, &param) != 0) {
-      WEBRTC_TRACE(
-          kTraceError, kTraceUtility, -1, "unable to set thread priority");
-    }
+  if (max_prio - min_prio <= 2)
+    return false;
+
+  sched_param param;
+  param.sched_priority = ConvertToSystemPriority(priority, min_prio, max_prio);
+  if (pthread_setschedparam(thread_, policy, &param) != 0) {
+    WEBRTC_TRACE(
+        kTraceError, kTraceUtility, -1, "unable to set thread priority");
+    return false;
+  }
+
+  return true;
+#endif  // defined(WEBRTC_CHROMIUM_BUILD) && defined(WEBRTC_LINUX)
+}
+
+void ThreadPosix::Run() {
+  if (!name_.empty()) {
+    // Setting the thread name may fail (harmlessly) if running inside a
+    // sandbox. Ignore failures if they happen.
+    rtc::SetCurrentThreadName(name_.substr(0, 63).c_str());
   }
 
   // It's a requirement that for successful thread creation that the run

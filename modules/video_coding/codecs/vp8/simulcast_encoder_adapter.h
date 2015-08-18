@@ -30,8 +30,7 @@ class VideoEncoderFactory {
 // webrtc::VideoEncoder instances with the given VideoEncoderFactory.
 // All the public interfaces are expected to be called from the same thread,
 // e.g the encoder thread.
-class SimulcastEncoderAdapter : public VP8Encoder,
-                                public EncodedImageCallback {
+class SimulcastEncoderAdapter : public VP8Encoder {
  public:
   explicit SimulcastEncoderAdapter(VideoEncoderFactory* factory);
   virtual ~SimulcastEncoderAdapter();
@@ -41,34 +40,48 @@ class SimulcastEncoderAdapter : public VP8Encoder,
   int InitEncode(const VideoCodec* inst,
                  int number_of_cores,
                  size_t max_payload_size) override;
-  int Encode(const I420VideoFrame& input_image,
+  int Encode(const VideoFrame& input_image,
              const CodecSpecificInfo* codec_specific_info,
              const std::vector<VideoFrameType>* frame_types) override;
   int RegisterEncodeCompleteCallback(EncodedImageCallback* callback) override;
   int SetChannelParameters(uint32_t packet_loss, int64_t rtt) override;
   int SetRates(uint32_t new_bitrate_kbit, uint32_t new_framerate) override;
 
-  // Implements EncodedImageCallback
-  int32_t Encoded(const EncodedImage& encodedImage,
+  // Eventual handler for the contained encoders' EncodedImageCallbacks, but
+  // called from an internal helper that also knows the correct stream
+  // index.
+  int32_t Encoded(size_t stream_idx,
+                  const EncodedImage& encodedImage,
                   const CodecSpecificInfo* codecSpecificInfo = NULL,
-                  const RTPFragmentationHeader* fragmentation = NULL) override;
+                  const RTPFragmentationHeader* fragmentation = NULL);
+
+  void OnDroppedFrame() override;
+
+  int GetTargetFramerate() override;
 
  private:
   struct StreamInfo {
     StreamInfo()
-        : encoder(NULL), width(0), height(0),
-          key_frame_request(false), send_stream(true) {}
+        : encoder(NULL),
+          callback(NULL),
+          width(0),
+          height(0),
+          key_frame_request(false),
+          send_stream(true) {}
     StreamInfo(VideoEncoder* encoder,
+               EncodedImageCallback* callback,
                unsigned short width,
                unsigned short height,
                bool send_stream)
         : encoder(encoder),
+          callback(callback),
           width(width),
           height(height),
           key_frame_request(false),
           send_stream(send_stream) {}
     // Deleted by SimulcastEncoderAdapter::Release().
     VideoEncoder* encoder;
+    EncodedImageCallback* callback;
     unsigned short width;
     unsigned short height;
     bool key_frame_request;
@@ -76,21 +89,21 @@ class SimulcastEncoderAdapter : public VP8Encoder,
   };
 
   // Get the stream bitrate, for the stream |stream_idx|, given the bitrate
-  // |new_bitrate_kbit|. The function also returns whether there's enough
+  // |new_bitrate_kbit| and the actual configured stream count in
+  // |total_number_of_streams|. The function also returns whether there's enough
   // bandwidth to send this stream via |send_stream|.
   uint32_t GetStreamBitrate(int stream_idx,
+                            size_t total_number_of_streams,
                             uint32_t new_bitrate_kbit,
                             bool* send_stream) const;
 
   // Populate the codec settings for each stream.
   void PopulateStreamCodec(const webrtc::VideoCodec* inst,
                            int stream_index,
+                           size_t total_number_of_streams,
                            bool highest_resolution_stream,
                            webrtc::VideoCodec* stream_codec,
                            bool* send_stream);
-
-  // Get the stream index according to |encodedImage|.
-  size_t GetStreamIndex(const EncodedImage& encodedImage);
 
   bool Initialized() const;
 

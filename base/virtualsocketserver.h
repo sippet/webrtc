@@ -38,6 +38,11 @@ class VirtualSocketServer : public SocketServer, public sigslot::has_slots<> {
 
   SocketServer* socketserver() { return server_; }
 
+  // The default route indicates which local address to use when a socket is
+  // bound to the 'any' address, e.g. 0.0.0.0.
+  IPAddress GetDefaultRoute(int family);
+  void SetDefaultRoute(const IPAddress& from_addr);
+
   // Limits the network bandwidth (maximum bytes per second).  Zero means that
   // all sends occur instantly.  Defaults to 0.
   uint32 bandwidth() const { return bandwidth_; }
@@ -113,6 +118,11 @@ class VirtualSocketServer : public SocketServer, public sigslot::has_slots<> {
 
   // Sets the next port number to use for testing.
   void SetNextPortForTesting(uint16 port);
+
+  // Close a pair of Tcp connections by addresses. Both connections will have
+  // its own OnClose invoked.
+  bool CloseTcpConnections(const SocketAddress& addr_local,
+                           const SocketAddress& addr_remote);
 
  protected:
   // Returns a new IP not used before in this network.
@@ -219,6 +229,9 @@ class VirtualSocketServer : public SocketServer, public sigslot::has_slots<> {
   AddressMap* bindings_;
   ConnectionMap* connections_;
 
+  IPAddress default_route_v4_;
+  IPAddress default_route_v6_;
+
   uint32 bandwidth_;
   uint32 network_capacity_;
   uint32 send_buffer_capacity_;
@@ -230,7 +243,7 @@ class VirtualSocketServer : public SocketServer, public sigslot::has_slots<> {
   CriticalSection delay_crit_;
 
   double drop_prob_;
-  DISALLOW_EVIL_CONSTRUCTORS(VirtualSocketServer);
+  DISALLOW_COPY_AND_ASSIGN(VirtualSocketServer);
 };
 
 // Implements the socket interface using the virtual network.  Packets are
@@ -242,9 +255,6 @@ class VirtualSocket : public AsyncSocket, public MessageHandler {
 
   SocketAddress GetLocalAddress() const override;
   SocketAddress GetRemoteAddress() const override;
-
-  // Used by server sockets to set the local address without binding.
-  void SetLocalAddress(const SocketAddress& addr);
 
   // Used by TurnPortTest to mimic a case where proxy returns local host address
   // instead of the original one TurnPort was bound against. Please see WebRTC
@@ -291,6 +301,9 @@ class VirtualSocket : public AsyncSocket, public MessageHandler {
   void CompleteConnect(const SocketAddress& addr, bool notify);
   int SendUdp(const void* pv, size_t cb, const SocketAddress& addr);
   int SendTcp(const void* pv, size_t cb);
+
+  // Used by server sockets to set the local address without binding.
+  void SetLocalAddress(const SocketAddress& addr);
 
   VirtualSocketServer* server_;
   int family_;

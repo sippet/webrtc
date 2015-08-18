@@ -21,7 +21,6 @@ AudioCoder::AudioCoder(uint32_t instanceID)
       _encodedLengthInBytes(0),
       _decodeTimestamp(0)
 {
-    _acm->InitializeSender();
     _acm->InitializeReceiver();
     _acm->RegisterTransportCallback(this);
 }
@@ -86,7 +85,7 @@ int32_t AudioCoder::Encode(const AudioFrame& audio,
     AudioFrame audioFrame;
     audioFrame.CopyFrom(audio);
     audioFrame.timestamp_ = _encodeTimestamp;
-    _encodeTimestamp += audioFrame.samples_per_channel_;
+    _encodeTimestamp += static_cast<uint32_t>(audioFrame.samples_per_channel_);
 
     // For any codec with a frame size that is longer than 10 ms the encoded
     // length in bytes should be zero until a a full frame has been encoded.

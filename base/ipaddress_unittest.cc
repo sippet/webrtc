@@ -46,6 +46,10 @@ static const std::string kIPv4PublicAddrAnonymizedString = "1.2.3.x";
 static const std::string kIPv6AnyAddrString = "::";
 static const std::string kIPv6LoopbackAddrString = "::1";
 static const std::string kIPv6LinkLocalAddrString = "fe80::be30:5bff:fee5:c3";
+static const std::string kIPv6EuiAddrString =
+    "2620:0:1008:1201:a248:1cff:fe98:360";
+static const std::string kIPv6TemporaryAddrString =
+    "2620:0:1008:1201:2089:6dda:385e:80c0";
 static const std::string kIPv6PublicAddrString =
     "2401:fa00:4:1000:be30:5bff:fee5:c3";
 static const std::string kIPv6PublicAddrAnonymizedString = "2401:fa00:4::";
@@ -540,6 +544,19 @@ TEST(IPAddressTest, TestIsPrivate) {
   EXPECT_TRUE(IPIsPrivate(IPAddress(kIPv6LinkLocalAddr)));
 }
 
+TEST(IPAddressTest, TestIsNil) {
+  IPAddress addr;
+  EXPECT_TRUE(IPAddress().IsNil());
+
+  EXPECT_TRUE(IPFromString(kIPv6AnyAddrString, &addr));
+  EXPECT_FALSE(addr.IsNil());
+
+  EXPECT_TRUE(IPFromString(kIPv4AnyAddrString, &addr));
+  EXPECT_FALSE(addr.IsNil());
+
+  EXPECT_FALSE(IPAddress(kIPv4PublicAddr).IsNil());
+}
+
 TEST(IPAddressTest, TestIsLoopback) {
   EXPECT_FALSE(IPIsLoopback(IPAddress(INADDR_ANY)));
   EXPECT_FALSE(IPIsLoopback(IPAddress(kIPv4PublicAddr)));
@@ -563,6 +580,24 @@ TEST(IPAddressTest, TestIsAny) {
   EXPECT_TRUE(IPIsAny(addr));
 
   EXPECT_TRUE(IPIsAny(IPAddress(kIPv4MappedAnyAddr)));
+}
+
+TEST(IPAddressTest, TestIsEui64) {
+  IPAddress addr;
+  EXPECT_TRUE(IPFromString(kIPv6EuiAddrString, &addr));
+  EXPECT_TRUE(IPIsMacBased(addr));
+
+  EXPECT_TRUE(IPFromString(kIPv6TemporaryAddrString, &addr));
+  EXPECT_FALSE(IPIsMacBased(addr));
+
+  EXPECT_TRUE(IPFromString(kIPv6LinkLocalAddrString, &addr));
+  EXPECT_TRUE(IPIsMacBased(addr));
+
+  EXPECT_TRUE(IPFromString(kIPv6AnyAddrString, &addr));
+  EXPECT_FALSE(IPIsMacBased(addr));
+
+  EXPECT_TRUE(IPFromString(kIPv6LoopbackAddrString, &addr));
+  EXPECT_FALSE(IPIsMacBased(addr));
 }
 
 TEST(IPAddressTest, TestNormalized) {

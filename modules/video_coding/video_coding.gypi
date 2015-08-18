@@ -12,6 +12,7 @@
       'target_name': 'webrtc_video_coding',
       'type': 'static_library',
       'dependencies': [
+        'webrtc_h264',
         'webrtc_i420',
         '<(webrtc_root)/common_video/common_video.gyp:common_video',
         '<(webrtc_root)/modules/video_coding/utility/video_coding_utility.gyp:video_coding_utility',
@@ -30,7 +31,6 @@
         'main/source/content_metrics_processing.h',
         'main/source/decoding_state.h',
         'main/source/encoded_frame.h',
-        'main/source/er_tables_xor.h',
         'main/source/fec_tables_xor.h',
         'main/source/frame_buffer.h',
         'main/source/generic_decoder.h',

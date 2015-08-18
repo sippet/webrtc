@@ -10,7 +10,6 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/scoped_ptr.h"
-#include "webrtc/common_video/interface/i420_video_frame.h"
 #include "webrtc/common_video/interface/video_image.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
@@ -18,6 +17,7 @@
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/metrics/video_metrics.h"
 #include "webrtc/tools/simple_command_line_parser.h"
+#include "webrtc/video_frame.h"
 
 class Vp8SequenceCoderEncodeCallback : public webrtc::EncodedImageCallback {
  public:
@@ -68,15 +68,15 @@ class Vp8SequenceCoderDecodeCallback : public webrtc::DecodedImageCallback {
  public:
   explicit Vp8SequenceCoderDecodeCallback(FILE* decoded_file)
       : decoded_file_(decoded_file) {}
-  int Decoded(webrtc::I420VideoFrame& frame);
+  int Decoded(webrtc::VideoFrame& frame);
   bool DecodeComplete();
 
  private:
   FILE* decoded_file_;
 };
 
-int Vp8SequenceCoderDecodeCallback::Decoded(webrtc::I420VideoFrame& image) {
-  EXPECT_EQ(0, webrtc::PrintI420VideoFrame(image, decoded_file_));
+int Vp8SequenceCoderDecodeCallback::Decoded(webrtc::VideoFrame& image) {
+  EXPECT_EQ(0, webrtc::PrintVideoFrame(image, decoded_file_));
   return 0;
 }
 
@@ -140,7 +140,7 @@ int SequenceCoder(webrtc::test::CommandLineParser& parser) {
     return -1;
   }
   EXPECT_EQ(0, decoder->InitDecode(&inst, 1));
-  webrtc::I420VideoFrame input_frame;
+  webrtc::VideoFrame input_frame;
   size_t length = webrtc::CalcBufferSize(webrtc::kI420, width, height);
   rtc::scoped_ptr<uint8_t[]> frame_buffer(new uint8_t[length]);
 
@@ -211,6 +211,7 @@ int main(int argc, char** argv) {
 
   // Init the parser and set the usage message.
   parser.Init(argc, argv);
+  parser.SetUsageMessage(usage);
 
   // Reset flags.
   parser.SetFlag("w", "352");
@@ -224,10 +225,12 @@ int main(int argc, char** argv) {
                  webrtc::test::OutputPath() + "vp8_encoded.vp8");
   parser.SetFlag("input_file", webrtc::test::ResourcePath("foreman_cif",
                                                           "yuv"));
+  parser.SetFlag("help", "false");
 
   parser.ProcessFlags();
   if (parser.GetFlag("help") == "true") {
     parser.PrintUsageMessage();
+    exit(EXIT_SUCCESS);
   }
   parser.PrintEnteredFlags();
 

@@ -8,12 +8,12 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef TALK_APP_BASE_REFCOUNT_H_
-#define TALK_APP_BASE_REFCOUNT_H_
+#ifndef WEBRTC_BASE_REFCOUNT_H_
+#define WEBRTC_BASE_REFCOUNT_H_
 
 #include <string.h>
 
-#include "webrtc/base/criticalsection.h"
+#include "webrtc/base/atomicops.h"
 
 namespace rtc {
 
@@ -54,12 +54,53 @@ class RefCountedObject : public T {
       : T(p1, p2, p3, p4, p5), ref_count_(0) {
   }
 
+  template<typename P1, typename P2, typename P3, typename P4, typename P5,
+           typename P6>
+  RefCountedObject(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6)
+      : T(p1, p2, p3, p4, p5, p6), ref_count_(0) {
+  }
+
+  template<typename P1, typename P2, typename P3, typename P4, typename P5,
+           typename P6, typename P7>
+  RefCountedObject(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7)
+      : T(p1, p2, p3, p4, p5, p6, p7), ref_count_(0) {
+  }
+
+  template<typename P1, typename P2, typename P3, typename P4, typename P5,
+           typename P6, typename P7, typename P8>
+  RefCountedObject(P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8)
+      : T(p1, p2, p3, p4, p5, p6, p7, p8), ref_count_(0) {
+  }
+
+  template<typename P1, typename P2, typename P3, typename P4, typename P5,
+           typename P6, typename P7, typename P8, typename P9>
+  RefCountedObject(
+      P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9)
+  : T(p1, p2, p3, p4, p5, p6, p7, p8, p9), ref_count_(0) {
+  }
+
+  template<typename P1, typename P2, typename P3, typename P4, typename P5,
+           typename P6, typename P7, typename P8, typename P9, typename P10>
+  RefCountedObject(
+      P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10)
+  : T(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10), ref_count_(0) {
+  }
+
+  template<typename P1, typename P2, typename P3, typename P4, typename P5,
+           typename P6, typename P7, typename P8, typename P9, typename P10,
+           typename P11>
+  RefCountedObject(
+      P1 p1, P2 p2, P3 p3, P4 p4, P5 p5, P6 p6, P7 p7, P8 p8, P9 p9, P10 p10,
+      P11 p11)
+  : T(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11), ref_count_(0) {
+  }
+
   virtual int AddRef() {
-    return rtc::AtomicOps::Increment(&ref_count_);
+    return AtomicOps::Increment(&ref_count_);
   }
 
   virtual int Release() {
-    int count = rtc::AtomicOps::Decrement(&ref_count_);
+    int count = AtomicOps::Decrement(&ref_count_);
     if (!count) {
       delete this;
     }
@@ -73,7 +114,7 @@ class RefCountedObject : public T {
   // barrier needed for the owning thread to act on the object, knowing that it
   // has exclusive access to the object.
   virtual bool HasOneRef() const {
-    return rtc::AtomicOps::Load(&ref_count_) == 1;
+    return AtomicOps::AcquireLoad(&ref_count_) == 1;
   }
 
  protected:
@@ -85,4 +126,4 @@ class RefCountedObject : public T {
 
 }  // namespace rtc
 
-#endif  // TALK_APP_BASE_REFCOUNT_H_
+#endif  // WEBRTC_BASE_REFCOUNT_H_

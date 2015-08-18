@@ -16,6 +16,7 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 
+#include "webrtc/base/checks.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/call.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
@@ -38,7 +39,8 @@ static const uint32_t kSendSsrc = 0x654321;
 static const uint32_t kSendRtxSsrc = 0x654322;
 static const uint32_t kReceiverLocalSsrc = 0x123456;
 
-static const uint8_t kRtxPayloadType = 96;
+static const uint8_t kRtxVideoPayloadType = 96;
+static const uint8_t kVideoPayloadType = 124;
 
 Loopback::Loopback(const Config& config)
     : config_(config), clock_(Clock::GetRealTimeClock()) {
@@ -68,11 +70,11 @@ void Loopback::Run() {
   test::DirectTransport transport(pipe_config);
   Call::Config call_config(&transport);
 
-  call_config.stream_bitrates.min_bitrate_bps =
+  call_config.bitrate_config.min_bitrate_bps =
       static_cast<int>(config_.min_bitrate_kbps) * 1000;
-  call_config.stream_bitrates.start_bitrate_bps =
+  call_config.bitrate_config.start_bitrate_bps =
       static_cast<int>(config_.start_bitrate_kbps) * 1000;
-  call_config.stream_bitrates.max_bitrate_bps =
+  call_config.bitrate_config.max_bitrate_bps =
       static_cast<int>(config_.max_bitrate_kbps) * 1000;
   rtc::scoped_ptr<Call> call(Call::Create(call_config));
 
@@ -82,7 +84,7 @@ void Loopback::Run() {
   VideoSendStream::Config send_config;
   send_config.rtp.ssrcs.push_back(kSendSsrc);
   send_config.rtp.rtx.ssrcs.push_back(kSendRtxSsrc);
-  send_config.rtp.rtx.payload_type = kRtxPayloadType;
+  send_config.rtp.rtx.payload_type = kRtxVideoPayloadType;
   send_config.rtp.nack.rtp_history_ms = 1000;
   send_config.rtp.extensions.push_back(
       RtpExtension(RtpExtension::kAbsSendTime, kAbsSendTimeExtensionId));
@@ -95,12 +97,12 @@ void Loopback::Run() {
     encoder.reset(VideoEncoder::Create(VideoEncoder::kVp9));
   } else {
     // Codec not supported.
-    assert(false && "Codec not supported!");
+    RTC_NOTREACHED() << "Codec not supported!";
     return;
   }
   send_config.encoder_settings.encoder = encoder.get();
   send_config.encoder_settings.payload_name = config_.codec;
-  send_config.encoder_settings.payload_type = 124;
+  send_config.encoder_settings.payload_type = kVideoPayloadType;
 
   VideoEncoderConfig encoder_config(CreateEncoderConfig());
 
@@ -113,8 +115,9 @@ void Loopback::Run() {
   receive_config.rtp.remote_ssrc = send_config.rtp.ssrcs[0];
   receive_config.rtp.local_ssrc = kReceiverLocalSsrc;
   receive_config.rtp.nack.rtp_history_ms = 1000;
-  receive_config.rtp.rtx[kRtxPayloadType].ssrc = kSendRtxSsrc;
-  receive_config.rtp.rtx[kRtxPayloadType].payload_type = kRtxPayloadType;
+  receive_config.rtp.remb = true;
+  receive_config.rtp.rtx[kVideoPayloadType].ssrc = kSendRtxSsrc;
+  receive_config.rtp.rtx[kVideoPayloadType].payload_type = kRtxVideoPayloadType;
   receive_config.rtp.extensions.push_back(
       RtpExtension(RtpExtension::kAbsSendTime, kAbsSendTimeExtensionId));
   receive_config.renderer = loopback_video.get();
@@ -155,6 +158,10 @@ VideoEncoderConfig Loopback::CreateEncoderConfig() {
       static_cast<int>(config_.max_bitrate_kbps) * 1000;
   stream->max_framerate = config_.fps;
   stream->max_qp = 56;
+  if (config_.num_temporal_layers != 0) {
+    stream->temporal_layer_thresholds_bps.resize(config_.num_temporal_layers -
+                                                 1);
+  }
   return encoder_config;
 }
 

@@ -52,15 +52,13 @@ class AudioEncoderCng final : public AudioEncoder {
   int RtpTimestampRateHz() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
+  int GetTargetBitrate() const override;
   void SetTargetBitrate(int bits_per_second) override;
   void SetProjectedPacketLossRate(double fraction) override;
-
- protected:
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
   // Deleter for use with scoped_ptr. E.g., use as
@@ -69,20 +67,19 @@ class AudioEncoderCng final : public AudioEncoder {
     inline void operator()(CNG_enc_inst* ptr) const { WebRtcCng_FreeEnc(ptr); }
   };
 
-  void EncodePassive(size_t max_encoded_bytes,
-                    uint8_t* encoded,
-                    EncodedInfo* info);
-  void EncodeActive(size_t max_encoded_bytes,
-                    uint8_t* encoded,
-                    EncodedInfo* info);
+  EncodedInfo EncodePassive(int frames_to_encode,
+                            size_t max_encoded_bytes,
+                            uint8_t* encoded);
+  EncodedInfo EncodeActive(int frames_to_encode,
+                           size_t max_encoded_bytes,
+                           uint8_t* encoded);
   size_t SamplesPer10msFrame() const;
 
   AudioEncoder* speech_encoder_;
   const int cng_payload_type_;
   const int num_cng_coefficients_;
   std::vector<int16_t> speech_buffer_;
-  uint32_t first_timestamp_in_buffer_;
-  int frames_in_buffer_;
+  std::vector<uint32_t> rtp_timestamps_;
   bool last_frame_active_;
   rtc::scoped_ptr<Vad> vad_;
   rtc::scoped_ptr<CNG_enc_inst, CngInstDeleter> cng_inst_;

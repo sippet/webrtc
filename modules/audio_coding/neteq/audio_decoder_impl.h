@@ -37,13 +37,16 @@ namespace webrtc {
 class AudioDecoderPcmU : public AudioDecoder {
  public:
   AudioDecoderPcmU() {}
-  virtual int Decode(const uint8_t* encoded,
+  int Init() override;
+  int PacketDuration(const uint8_t* encoded, size_t encoded_len) const override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual int Init() { return 0; }
-  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len) const;
+                     SpeechType* speech_type) override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderPcmU);
@@ -52,13 +55,16 @@ class AudioDecoderPcmU : public AudioDecoder {
 class AudioDecoderPcmA : public AudioDecoder {
  public:
   AudioDecoderPcmA() {}
-  virtual int Decode(const uint8_t* encoded,
+  int Init() override;
+  int PacketDuration(const uint8_t* encoded, size_t encoded_len) const override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual int Init() { return 0; }
-  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len) const;
+                     SpeechType* speech_type) override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderPcmA);
@@ -66,23 +72,27 @@ class AudioDecoderPcmA : public AudioDecoder {
 
 class AudioDecoderPcmUMultiCh : public AudioDecoderPcmU {
  public:
-  explicit AudioDecoderPcmUMultiCh(size_t channels) : AudioDecoderPcmU() {
+  explicit AudioDecoderPcmUMultiCh(size_t channels)
+      : AudioDecoderPcmU(), channels_(channels) {
     assert(channels > 0);
-    channels_ = channels;
   }
+  size_t Channels() const override;
 
  private:
+  const size_t channels_;
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderPcmUMultiCh);
 };
 
 class AudioDecoderPcmAMultiCh : public AudioDecoderPcmA {
  public:
-  explicit AudioDecoderPcmAMultiCh(size_t channels) : AudioDecoderPcmA() {
+  explicit AudioDecoderPcmAMultiCh(size_t channels)
+      : AudioDecoderPcmA(), channels_(channels) {
     assert(channels > 0);
-    channels_ = channels;
   }
+  size_t Channels() const override;
 
  private:
+  const size_t channels_;
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderPcmAMultiCh);
 };
 
@@ -92,13 +102,16 @@ class AudioDecoderPcmAMultiCh : public AudioDecoderPcmA {
 class AudioDecoderPcm16B : public AudioDecoder {
  public:
   AudioDecoderPcm16B();
-  virtual int Decode(const uint8_t* encoded,
+  int Init() override;
+  int PacketDuration(const uint8_t* encoded, size_t encoded_len) const override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual int Init() { return 0; }
-  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len) const;
+                     SpeechType* speech_type) override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderPcm16B);
@@ -110,8 +123,10 @@ class AudioDecoderPcm16B : public AudioDecoder {
 class AudioDecoderPcm16BMultiCh : public AudioDecoderPcm16B {
  public:
   explicit AudioDecoderPcm16BMultiCh(int num_channels);
+  size_t Channels() const override;
 
  private:
+  const size_t channels_;
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderPcm16BMultiCh);
 };
 #endif
@@ -120,15 +135,18 @@ class AudioDecoderPcm16BMultiCh : public AudioDecoderPcm16B {
 class AudioDecoderIlbc : public AudioDecoder {
  public:
   AudioDecoderIlbc();
-  virtual ~AudioDecoderIlbc();
-  virtual int Decode(const uint8_t* encoded,
+  ~AudioDecoderIlbc() override;
+  bool HasDecodePlc() const override;
+  int DecodePlc(int num_frames, int16_t* decoded) override;
+  int Init() override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual bool HasDecodePlc() const { return true; }
-  virtual int DecodePlc(int num_frames, int16_t* decoded);
-  virtual int Init();
+                     SpeechType* speech_type) override;
 
  private:
   IlbcDecoderInstance* dec_state_;
@@ -140,15 +158,18 @@ class AudioDecoderIlbc : public AudioDecoder {
 class AudioDecoderG722 : public AudioDecoder {
  public:
   AudioDecoderG722();
-  virtual ~AudioDecoderG722();
-  virtual int Decode(const uint8_t* encoded,
+  ~AudioDecoderG722() override;
+  bool HasDecodePlc() const override;
+  int Init() override;
+  int PacketDuration(const uint8_t* encoded, size_t encoded_len) const override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual bool HasDecodePlc() const { return false; }
-  virtual int Init();
-  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len) const;
+                     SpeechType* speech_type) override;
 
  private:
   G722DecInst* dec_state_;
@@ -158,13 +179,16 @@ class AudioDecoderG722 : public AudioDecoder {
 class AudioDecoderG722Stereo : public AudioDecoder {
  public:
   AudioDecoderG722Stereo();
-  virtual ~AudioDecoderG722Stereo();
-  virtual int Decode(const uint8_t* encoded,
+  ~AudioDecoderG722Stereo() override;
+  int Init() override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual int Init();
+                     SpeechType* speech_type) override;
+  size_t Channels() const override;
 
  private:
   // Splits the stereo-interleaved payload in |encoded| into separate payloads
@@ -186,25 +210,30 @@ class AudioDecoderG722Stereo : public AudioDecoder {
 class AudioDecoderOpus : public AudioDecoder {
  public:
   explicit AudioDecoderOpus(int num_channels);
-  virtual ~AudioDecoderOpus();
-  virtual int Decode(const uint8_t* encoded,
+  ~AudioDecoderOpus() override;
+
+  int Init() override;
+  int PacketDuration(const uint8_t* encoded, size_t encoded_len) const override;
+  int PacketDurationRedundant(const uint8_t* encoded,
+                              size_t encoded_len) const override;
+  bool PacketHasFec(const uint8_t* encoded, size_t encoded_len) const override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
                      size_t encoded_len,
                      int sample_rate_hz,
                      int16_t* decoded,
-                     SpeechType* speech_type);
-  virtual int DecodeRedundant(const uint8_t* encoded,
+                     SpeechType* speech_type) override;
+  int DecodeRedundantInternal(const uint8_t* encoded,
                               size_t encoded_len,
                               int sample_rate_hz,
                               int16_t* decoded,
-                              SpeechType* speech_type);
-  virtual int Init();
-  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len) const;
-  virtual int PacketDurationRedundant(const uint8_t* encoded,
-                                      size_t encoded_len) const;
-  virtual bool PacketHasFec(const uint8_t* encoded, size_t encoded_len) const;
+                              SpeechType* speech_type) override;
 
  private:
   OpusDecInst* dec_state_;
+  const size_t channels_;
   DISALLOW_COPY_AND_ASSIGN(AudioDecoderOpus);
 };
 #endif
@@ -218,22 +247,23 @@ class AudioDecoderOpus : public AudioDecoder {
 class AudioDecoderCng : public AudioDecoder {
  public:
   explicit AudioDecoderCng();
-  virtual ~AudioDecoderCng();
-  virtual int Decode(const uint8_t* encoded,
-                     size_t encoded_len,
-                     int /*sample_rate_hz*/,
-                     int16_t* decoded,
-                     SpeechType* speech_type) {
-    return -1;
-  }
-  virtual int Init();
-  virtual int IncomingPacket(const uint8_t* payload,
-                             size_t payload_len,
-                             uint16_t rtp_sequence_number,
-                             uint32_t rtp_timestamp,
-                             uint32_t arrival_timestamp) { return -1; }
+  ~AudioDecoderCng() override;
+  int Init() override;
+  int IncomingPacket(const uint8_t* payload,
+                     size_t payload_len,
+                     uint16_t rtp_sequence_number,
+                     uint32_t rtp_timestamp,
+                     uint32_t arrival_timestamp) override;
 
-  CNG_dec_inst* CngDecoderInstance() override { return dec_state_; }
+  CNG_dec_inst* CngDecoderInstance() override;
+  size_t Channels() const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
+                     size_t encoded_len,
+                     int sample_rate_hz,
+                     int16_t* decoded,
+                     SpeechType* speech_type) override;
 
  private:
   CNG_dec_inst* dec_state_;

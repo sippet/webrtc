@@ -175,6 +175,8 @@ class IntervalBudget {
 
   void set_target_rate_kbps(int target_rate_kbps) {
     target_rate_kbps_ = target_rate_kbps;
+    bytes_remaining_ =
+        std::max(-kWindowMs * target_rate_kbps_ / 8, bytes_remaining_);
   }
 
   void IncreaseBudget(int64_t delta_time_ms) {
@@ -190,14 +192,18 @@ class IntervalBudget {
 
   void UseBudget(size_t bytes) {
     bytes_remaining_ = std::max(bytes_remaining_ - static_cast<int>(bytes),
-                                -500 * target_rate_kbps_ / 8);
+                                -kWindowMs * target_rate_kbps_ / 8);
   }
 
-  int bytes_remaining() const { return bytes_remaining_; }
+  size_t bytes_remaining() const {
+    return static_cast<size_t>(std::max(0, bytes_remaining_));
+  }
 
   int target_rate_kbps() const { return target_rate_kbps_; }
 
  private:
+  static const int kWindowMs = 500;
+
   int target_rate_kbps_;
   int bytes_remaining_;
 };
@@ -334,7 +340,7 @@ int32_t PacedSender::Process() {
       UpdateBytesPerInterval(delta_time_ms);
     }
     while (!packets_->Empty()) {
-      if (media_budget_->bytes_remaining() <= 0 && !prober_->IsProbing()) {
+      if (media_budget_->bytes_remaining() == 0 && !prober_->IsProbing()) {
         return 0;
       }
 
@@ -355,10 +361,14 @@ int32_t PacedSender::Process() {
       }
     }
 
-    int padding_needed = padding_budget_->bytes_remaining();
-    if (padding_needed > 0) {
+    size_t padding_needed;
+    if (prober_->IsProbing() && ProbingExperimentIsEnabled())
+      padding_needed = prober_->RecommendedPacketSize();
+    else
+      padding_needed = padding_budget_->bytes_remaining();
+
+    if (padding_needed > 0)
       SendPadding(static_cast<size_t>(padding_needed));
-    }
   }
   return 0;
 }
@@ -386,13 +396,20 @@ void PacedSender::SendPadding(size_t padding_needed) {
   size_t bytes_sent = callback_->TimeToSendPadding(padding_needed);
   critsect_->Enter();
 
-  // Update padding bytes sent.
-  media_budget_->UseBudget(bytes_sent);
-  padding_budget_->UseBudget(bytes_sent);
+  if (bytes_sent > 0) {
+    prober_->PacketSent(clock_->TimeInMilliseconds(), bytes_sent);
+    media_budget_->UseBudget(bytes_sent);
+    padding_budget_->UseBudget(bytes_sent);
+  }
 }
 
 void PacedSender::UpdateBytesPerInterval(int64_t delta_time_ms) {
   media_budget_->IncreaseBudget(delta_time_ms);
   padding_budget_->IncreaseBudget(delta_time_ms);
+}
+
+bool PacedSender::ProbingExperimentIsEnabled() const {
+  return webrtc::field_trial::FindFullName("WebRTC-BitrateProbing") ==
+         "Enabled";
 }
 }  // namespace webrtc

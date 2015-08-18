@@ -24,10 +24,10 @@
 #include "webrtc/base/base64.h"
 #include "webrtc/base/common.h"
 #include "webrtc/base/cryptstring.h"
-#include "webrtc/base/httpcommon.h"
 #include "webrtc/base/httpcommon-inl.h"
+#include "webrtc/base/httpcommon.h"
+#include "webrtc/base/messagedigest.h"
 #include "webrtc/base/socketaddress.h"
-#include "webrtc/base/stringdigest.h"
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
 
@@ -387,6 +387,10 @@ bool HttpDateToSeconds(const std::string& date, time_t* seconds) {
   tm *tm_for_timezone = localtime(&gmt);
   *seconds = gmt + tm_for_timezone->tm_gmtoff;
 #else
+#if _MSC_VER >= 1900
+  long timezone = 0;
+  _get_timezone(&timezone);
+#endif
   *seconds = gmt - timezone;
 #endif
   return true;

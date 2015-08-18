@@ -38,11 +38,19 @@
 namespace webrtc {
 
 // PCMu
-int AudioDecoderPcmU::Decode(const uint8_t* encoded,
-                             size_t encoded_len,
-                             int sample_rate_hz,
-                             int16_t* decoded,
-                             SpeechType* speech_type) {
+
+int AudioDecoderPcmU::Init() {
+  return 0;
+}
+size_t AudioDecoderPcmU::Channels() const {
+  return 1;
+}
+
+int AudioDecoderPcmU::DecodeInternal(const uint8_t* encoded,
+                                     size_t encoded_len,
+                                     int sample_rate_hz,
+                                     int16_t* decoded,
+                                     SpeechType* speech_type) {
   DCHECK_EQ(sample_rate_hz, 8000);
   int16_t temp_type = 1;  // Default is speech.
   int16_t ret = WebRtcG711_DecodeU(encoded, static_cast<int16_t>(encoded_len),
@@ -54,15 +62,27 @@ int AudioDecoderPcmU::Decode(const uint8_t* encoded,
 int AudioDecoderPcmU::PacketDuration(const uint8_t* encoded,
                                      size_t encoded_len) const {
   // One encoded byte per sample per channel.
-  return static_cast<int>(encoded_len / channels_);
+  return static_cast<int>(encoded_len / Channels());
+}
+
+size_t AudioDecoderPcmUMultiCh::Channels() const {
+  return channels_;
 }
 
 // PCMa
-int AudioDecoderPcmA::Decode(const uint8_t* encoded,
-                             size_t encoded_len,
-                             int sample_rate_hz,
-                             int16_t* decoded,
-                             SpeechType* speech_type) {
+
+int AudioDecoderPcmA::Init() {
+  return 0;
+}
+size_t AudioDecoderPcmA::Channels() const {
+  return 1;
+}
+
+int AudioDecoderPcmA::DecodeInternal(const uint8_t* encoded,
+                                     size_t encoded_len,
+                                     int sample_rate_hz,
+                                     int16_t* decoded,
+                                     SpeechType* speech_type) {
   DCHECK_EQ(sample_rate_hz, 8000);
   int16_t temp_type = 1;  // Default is speech.
   int16_t ret = WebRtcG711_DecodeA(encoded, static_cast<int16_t>(encoded_len),
@@ -74,18 +94,29 @@ int AudioDecoderPcmA::Decode(const uint8_t* encoded,
 int AudioDecoderPcmA::PacketDuration(const uint8_t* encoded,
                                      size_t encoded_len) const {
   // One encoded byte per sample per channel.
-  return static_cast<int>(encoded_len / channels_);
+  return static_cast<int>(encoded_len / Channels());
+}
+
+size_t AudioDecoderPcmAMultiCh::Channels() const {
+  return channels_;
 }
 
 // PCM16B
 #ifdef WEBRTC_CODEC_PCM16
 AudioDecoderPcm16B::AudioDecoderPcm16B() {}
 
-int AudioDecoderPcm16B::Decode(const uint8_t* encoded,
-                               size_t encoded_len,
-                               int sample_rate_hz,
-                               int16_t* decoded,
-                               SpeechType* speech_type) {
+int AudioDecoderPcm16B::Init() {
+  return 0;
+}
+size_t AudioDecoderPcm16B::Channels() const {
+  return 1;
+}
+
+int AudioDecoderPcm16B::DecodeInternal(const uint8_t* encoded,
+                                       size_t encoded_len,
+                                       int sample_rate_hz,
+                                       int16_t* decoded,
+                                       SpeechType* speech_type) {
   DCHECK(sample_rate_hz == 8000 || sample_rate_hz == 16000 ||
          sample_rate_hz == 32000 || sample_rate_hz == 48000)
       << "Unsupported sample rate " << sample_rate_hz;
@@ -98,12 +129,16 @@ int AudioDecoderPcm16B::Decode(const uint8_t* encoded,
 int AudioDecoderPcm16B::PacketDuration(const uint8_t* encoded,
                                        size_t encoded_len) const {
   // Two encoded byte per sample per channel.
-  return static_cast<int>(encoded_len / (2 * channels_));
+  return static_cast<int>(encoded_len / (2 * Channels()));
 }
 
-AudioDecoderPcm16BMultiCh::AudioDecoderPcm16BMultiCh(int num_channels) {
+AudioDecoderPcm16BMultiCh::AudioDecoderPcm16BMultiCh(int num_channels)
+    : channels_(num_channels) {
   DCHECK(num_channels > 0);
-  channels_ = num_channels;
+}
+
+size_t AudioDecoderPcm16BMultiCh::Channels() const {
+  return channels_;
 }
 #endif
 
@@ -117,16 +152,20 @@ AudioDecoderIlbc::~AudioDecoderIlbc() {
   WebRtcIlbcfix_DecoderFree(dec_state_);
 }
 
-int AudioDecoderIlbc::Decode(const uint8_t* encoded,
-                             size_t encoded_len,
-                             int sample_rate_hz,
-                             int16_t* decoded,
-                             SpeechType* speech_type) {
+bool AudioDecoderIlbc::HasDecodePlc() const {
+  return true;
+}
+
+int AudioDecoderIlbc::DecodeInternal(const uint8_t* encoded,
+                                     size_t encoded_len,
+                                     int sample_rate_hz,
+                                     int16_t* decoded,
+                                     SpeechType* speech_type) {
   DCHECK_EQ(sample_rate_hz, 8000);
   int16_t temp_type = 1;  // Default is speech.
-  int16_t ret = WebRtcIlbcfix_Decode(dec_state_, encoded,
-                                     static_cast<int16_t>(encoded_len), decoded,
-                                     &temp_type);
+  int ret = WebRtcIlbcfix_Decode(dec_state_, encoded,
+                                 static_cast<int16_t>(encoded_len), decoded,
+                                 &temp_type);
   *speech_type = ConvertSpeechType(temp_type);
   return ret;
 }
@@ -137,6 +176,10 @@ int AudioDecoderIlbc::DecodePlc(int num_frames, int16_t* decoded) {
 
 int AudioDecoderIlbc::Init() {
   return WebRtcIlbcfix_Decoderinit30Ms(dec_state_);
+}
+
+size_t AudioDecoderIlbc::Channels() const {
+  return 1;
 }
 #endif
 
@@ -150,11 +193,15 @@ AudioDecoderG722::~AudioDecoderG722() {
   WebRtcG722_FreeDecoder(dec_state_);
 }
 
-int AudioDecoderG722::Decode(const uint8_t* encoded,
-                             size_t encoded_len,
-                             int sample_rate_hz,
-                             int16_t* decoded,
-                             SpeechType* speech_type) {
+bool AudioDecoderG722::HasDecodePlc() const {
+  return false;
+}
+
+int AudioDecoderG722::DecodeInternal(const uint8_t* encoded,
+                                     size_t encoded_len,
+                                     int sample_rate_hz,
+                                     int16_t* decoded,
+                                     SpeechType* speech_type) {
   DCHECK_EQ(sample_rate_hz, 16000);
   int16_t temp_type = 1;  // Default is speech.
   int16_t ret =
@@ -171,11 +218,14 @@ int AudioDecoderG722::Init() {
 int AudioDecoderG722::PacketDuration(const uint8_t* encoded,
                                      size_t encoded_len) const {
   // 1/2 encoded byte per sample per channel.
-  return static_cast<int>(2 * encoded_len / channels_);
+  return static_cast<int>(2 * encoded_len / Channels());
+}
+
+size_t AudioDecoderG722::Channels() const {
+  return 1;
 }
 
 AudioDecoderG722Stereo::AudioDecoderG722Stereo() {
-  channels_ = 2;
   WebRtcG722_CreateDecoder(&dec_state_left_);
   WebRtcG722_CreateDecoder(&dec_state_right_);
 }
@@ -185,11 +235,11 @@ AudioDecoderG722Stereo::~AudioDecoderG722Stereo() {
   WebRtcG722_FreeDecoder(dec_state_right_);
 }
 
-int AudioDecoderG722Stereo::Decode(const uint8_t* encoded,
-                                   size_t encoded_len,
-                                   int sample_rate_hz,
-                                   int16_t* decoded,
-                                   SpeechType* speech_type) {
+int AudioDecoderG722Stereo::DecodeInternal(const uint8_t* encoded,
+                                           size_t encoded_len,
+                                           int sample_rate_hz,
+                                           int16_t* decoded,
+                                           SpeechType* speech_type) {
   DCHECK_EQ(sample_rate_hz, 16000);
   int16_t temp_type = 1;  // Default is speech.
   // De-interleave the bit-stream into two separate payloads.
@@ -206,21 +256,23 @@ int AudioDecoderG722Stereo::Decode(const uint8_t* encoded,
                             static_cast<int16_t>(encoded_len / 2),
                             &decoded[decoded_len], &temp_type);
     if (ret == decoded_len) {
-      decoded_len += ret;
+      ret += decoded_len;  // Return total number of samples.
       // Interleave output.
-      for (int k = decoded_len / 2; k < decoded_len; k++) {
+      for (int k = ret / 2; k < ret; k++) {
           int16_t temp = decoded[k];
-          memmove(&decoded[2 * k - decoded_len + 2],
-                  &decoded[2 * k - decoded_len + 1],
-                  (decoded_len - k - 1) * sizeof(int16_t));
-          decoded[2 * k - decoded_len + 1] = temp;
+          memmove(&decoded[2 * k - ret + 2], &decoded[2 * k - ret + 1],
+                  (ret - k - 1) * sizeof(int16_t));
+          decoded[2 * k - ret + 1] = temp;
       }
-      ret = decoded_len;  // Return total number of samples.
     }
   }
   *speech_type = ConvertSpeechType(temp_type);
   delete [] encoded_deinterleaved;
   return ret;
+}
+
+size_t AudioDecoderG722Stereo::Channels() const {
+  return 2;
 }
 
 int AudioDecoderG722Stereo::Init() {
@@ -260,9 +312,8 @@ void AudioDecoderG722Stereo::SplitStereoPacket(const uint8_t* encoded,
 
 // Opus
 #ifdef WEBRTC_CODEC_OPUS
-AudioDecoderOpus::AudioDecoderOpus(int num_channels) {
+AudioDecoderOpus::AudioDecoderOpus(int num_channels) : channels_(num_channels) {
   DCHECK(num_channels == 1 || num_channels == 2);
-  channels_ = num_channels;
   WebRtcOpus_DecoderCreate(&dec_state_, static_cast<int>(channels_));
 }
 
@@ -270,38 +321,40 @@ AudioDecoderOpus::~AudioDecoderOpus() {
   WebRtcOpus_DecoderFree(dec_state_);
 }
 
-int AudioDecoderOpus::Decode(const uint8_t* encoded,
-                             size_t encoded_len,
-                             int sample_rate_hz,
-                             int16_t* decoded,
-                             SpeechType* speech_type) {
+int AudioDecoderOpus::DecodeInternal(const uint8_t* encoded,
+                                     size_t encoded_len,
+                                     int sample_rate_hz,
+                                     int16_t* decoded,
+                                     SpeechType* speech_type) {
   DCHECK_EQ(sample_rate_hz, 48000);
   int16_t temp_type = 1;  // Default is speech.
-  int16_t ret = WebRtcOpus_Decode(dec_state_, encoded,
-                                  static_cast<int16_t>(encoded_len), decoded,
-                                  &temp_type);
+  int ret = WebRtcOpus_Decode(dec_state_, encoded,
+                              static_cast<int16_t>(encoded_len), decoded,
+                              &temp_type);
   if (ret > 0)
-    ret *= static_cast<int16_t>(channels_);  // Return total number of samples.
+    ret *= static_cast<int>(channels_);  // Return total number of samples.
   *speech_type = ConvertSpeechType(temp_type);
   return ret;
 }
 
-int AudioDecoderOpus::DecodeRedundant(const uint8_t* encoded,
-                                      size_t encoded_len,
-                                      int sample_rate_hz,
-                                      int16_t* decoded,
-                                      SpeechType* speech_type) {
+int AudioDecoderOpus::DecodeRedundantInternal(const uint8_t* encoded,
+                                              size_t encoded_len,
+                                              int sample_rate_hz,
+                                              int16_t* decoded,
+                                              SpeechType* speech_type) {
   if (!PacketHasFec(encoded, encoded_len)) {
     // This packet is a RED packet.
-    return Decode(encoded, encoded_len, sample_rate_hz, decoded, speech_type);
+    return DecodeInternal(encoded, encoded_len, sample_rate_hz, decoded,
+                          speech_type);
   }
 
+  DCHECK_EQ(sample_rate_hz, 48000);
   int16_t temp_type = 1;  // Default is speech.
-  int16_t ret = WebRtcOpus_DecodeFec(dec_state_, encoded,
-                                     static_cast<int16_t>(encoded_len), decoded,
-                                     &temp_type);
+  int ret = WebRtcOpus_DecodeFec(dec_state_, encoded,
+                                 static_cast<int16_t>(encoded_len), decoded,
+                                 &temp_type);
   if (ret > 0)
-    ret *= static_cast<int16_t>(channels_);  // Return total number of samples.
+    ret *= static_cast<int>(channels_);  // Return total number of samples.
   *speech_type = ConvertSpeechType(temp_type);
   return ret;
 }
@@ -332,6 +385,10 @@ bool AudioDecoderOpus::PacketHasFec(const uint8_t* encoded,
   fec = WebRtcOpus_PacketHasFec(encoded, static_cast<int>(encoded_len));
   return (fec == 1);
 }
+
+size_t AudioDecoderOpus::Channels() const {
+  return channels_;
+}
 #endif
 
 AudioDecoderCng::AudioDecoderCng() {
@@ -344,6 +401,30 @@ AudioDecoderCng::~AudioDecoderCng() {
 
 int AudioDecoderCng::Init() {
   return WebRtcCng_InitDec(dec_state_);
+}
+
+int AudioDecoderCng::IncomingPacket(const uint8_t* payload,
+                                    size_t payload_len,
+                                    uint16_t rtp_sequence_number,
+                                    uint32_t rtp_timestamp,
+                                    uint32_t arrival_timestamp) {
+  return -1;
+}
+
+CNG_dec_inst* AudioDecoderCng::CngDecoderInstance() {
+  return dec_state_;
+}
+
+size_t AudioDecoderCng::Channels() const {
+  return 1;
+}
+
+int AudioDecoderCng::DecodeInternal(const uint8_t* encoded,
+                                    size_t encoded_len,
+                                    int sample_rate_hz,
+                                    int16_t* decoded,
+                                    SpeechType* speech_type) {
+  return -1;
 }
 
 bool CodecSupported(NetEqDecoder codec_type) {

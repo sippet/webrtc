@@ -13,6 +13,7 @@
 #include <limits>
 
 #include "webrtc/base/checks.h"
+#include "webrtc/common_types.h"
 #include "webrtc/modules/audio_coding/codecs/g711/include/g711_interface.h"
 
 namespace webrtc {
@@ -27,6 +28,10 @@ int16_t NumSamplesPerFrame(int num_channels,
   return static_cast<int16_t>(samples_per_frame);
 }
 }  // namespace
+
+bool AudioEncoderPcm::Config::IsOk() const {
+  return (frame_size_ms % 10 == 0) && (num_channels >= 1);
+}
 
 AudioEncoderPcm::AudioEncoderPcm(const Config& config, int sample_rate_hz)
     : sample_rate_hz_(sample_rate_hz),
@@ -55,7 +60,7 @@ int AudioEncoderPcm::NumChannels() const {
 }
 
 size_t AudioEncoderPcm::MaxEncodedBytes() const {
-  return full_frame_samples_;
+  return full_frame_samples_ * BytesPerSample();
 }
 
 int AudioEncoderPcm::Num10MsFramesInNextPacket() const {
@@ -66,11 +71,15 @@ int AudioEncoderPcm::Max10MsFramesInAPacket() const {
   return num_10ms_frames_per_packet_;
 }
 
-void AudioEncoderPcm::EncodeInternal(uint32_t rtp_timestamp,
-                                     const int16_t* audio,
-                                     size_t max_encoded_bytes,
-                                     uint8_t* encoded,
-                                     EncodedInfo* info) {
+int AudioEncoderPcm::GetTargetBitrate() const {
+  return 8 * BytesPerSample() * SampleRateHz() * NumChannels();
+}
+
+AudioEncoder::EncodedInfo AudioEncoderPcm::EncodeInternal(
+    uint32_t rtp_timestamp,
+    const int16_t* audio,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   const int num_samples = SampleRateHz() / 100 * NumChannels();
   if (speech_buffer_.empty()) {
     first_timestamp_in_buffer_ = rtp_timestamp;
@@ -79,17 +88,18 @@ void AudioEncoderPcm::EncodeInternal(uint32_t rtp_timestamp,
     speech_buffer_.push_back(audio[i]);
   }
   if (speech_buffer_.size() < full_frame_samples_) {
-    info->encoded_bytes = 0;
-    return;
+    return EncodedInfo();
   }
   CHECK_EQ(speech_buffer_.size(), full_frame_samples_);
   CHECK_GE(max_encoded_bytes, full_frame_samples_);
+  EncodedInfo info;
+  info.encoded_timestamp = first_timestamp_in_buffer_;
+  info.payload_type = payload_type_;
   int16_t ret = EncodeCall(&speech_buffer_[0], full_frame_samples_, encoded);
   CHECK_GE(ret, 0);
+  info.encoded_bytes = static_cast<size_t>(ret);
   speech_buffer_.clear();
-  info->encoded_timestamp = first_timestamp_in_buffer_;
-  info->payload_type = payload_type_;
-  info->encoded_bytes = static_cast<size_t>(ret);
+  return info;
 }
 
 int16_t AudioEncoderPcmA::EncodeCall(const int16_t* audio,
@@ -98,10 +108,39 @@ int16_t AudioEncoderPcmA::EncodeCall(const int16_t* audio,
   return WebRtcG711_EncodeA(audio, static_cast<int16_t>(input_len), encoded);
 }
 
+int AudioEncoderPcmA::BytesPerSample() const {
+  return 1;
+}
+
 int16_t AudioEncoderPcmU::EncodeCall(const int16_t* audio,
                                      size_t input_len,
                                      uint8_t* encoded) {
   return WebRtcG711_EncodeU(audio, static_cast<int16_t>(input_len), encoded);
+}
+
+int AudioEncoderPcmU::BytesPerSample() const {
+  return 1;
+}
+
+namespace {
+template <typename T>
+typename T::Config CreateConfig(const CodecInst& codec_inst) {
+  typename T::Config config;
+  config.frame_size_ms = codec_inst.pacsize / 8;
+  config.num_channels = codec_inst.channels;
+  config.payload_type = codec_inst.pltype;
+  return config;
+}
+}  // namespace
+
+AudioEncoderMutablePcmU::AudioEncoderMutablePcmU(const CodecInst& codec_inst)
+    : AudioEncoderMutableImpl<AudioEncoderPcmU>(
+          CreateConfig<AudioEncoderPcmU>(codec_inst)) {
+}
+
+AudioEncoderMutablePcmA::AudioEncoderMutablePcmA(const CodecInst& codec_inst)
+    : AudioEncoderMutableImpl<AudioEncoderPcmA>(
+          CreateConfig<AudioEncoderPcmA>(codec_inst)) {
 }
 
 }  // namespace webrtc

@@ -11,6 +11,7 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_MAIN_ACM2_ACM_RECEIVER_H_
 #define WEBRTC_MODULES_AUDIO_CODING_MAIN_ACM2_ACM_RECEIVER_H_
 
+#include <map>
 #include <vector>
 
 #include "webrtc/base/scoped_ptr.h"
@@ -39,11 +40,12 @@ class Nack;
 class AcmReceiver {
  public:
   struct Decoder {
-    bool registered;
+    int acm_codec_id;
     uint8_t payload_type;
     // This field is meaningful for codecs where both mono and
     // stereo versions are registered under the same ID.
     int channels;
+    int sample_rate_hz;
   };
 
   // Constructor of the class
@@ -93,6 +95,7 @@ class AcmReceiver {
   // Input:
   //   - acm_codec_id        : ACM codec ID.
   //   - payload_type        : payload type.
+  //   - sample_rate_hz      : sample rate.
   //   - audio_decoder       : pointer to a decoder object. If it is NULL
   //                           then NetEq will internally create the decoder
   //                           object. Otherwise, NetEq will store this pointer
@@ -112,6 +115,7 @@ class AcmReceiver {
   int AddCodec(int acm_codec_id,
                uint8_t payload_type,
                int channels,
+               int sample_rate_hz,
                AudioDecoder* audio_decoder);
 
   //
@@ -306,15 +310,14 @@ class AcmReceiver {
   void GetDecodingCallStatistics(AudioDecodingCallStats* stats) const;
 
  private:
-  int PayloadType2CodecIndex(uint8_t payload_type) const;
-
   bool GetSilence(int desired_sample_rate_hz, AudioFrame* frame)
       EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
 
   int GetNumSyncPacketToInsert(uint16_t received_squence_number);
 
-  int RtpHeaderToCodecIndex(
-      const RTPHeader& rtp_header, const uint8_t* payload) const;
+  const Decoder* RtpHeaderToDecoder(const RTPHeader& rtp_header,
+                                    const uint8_t* payload) const
+      EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
 
   uint32_t NowInTimestamp(int decoder_sampling_rate) const;
 
@@ -322,7 +325,7 @@ class AcmReceiver {
 
   rtc::scoped_ptr<CriticalSectionWrapper> crit_sect_;
   int id_;  // TODO(henrik.lundin) Make const.
-  int last_audio_decoder_ GUARDED_BY(crit_sect_);
+  const Decoder* last_audio_decoder_ GUARDED_BY(crit_sect_);
   AudioFrame::VADActivity previous_audio_activity_ GUARDED_BY(crit_sect_);
   int current_sample_rate_hz_ GUARDED_BY(crit_sect_);
   ACMResampler resampler_ GUARDED_BY(crit_sect_);
@@ -334,7 +337,8 @@ class AcmReceiver {
   bool nack_enabled_ GUARDED_BY(crit_sect_);
   CallStatistics call_stats_ GUARDED_BY(crit_sect_);
   NetEq* neteq_;
-  Decoder decoders_[ACMCodecDB::kMaxNumCodecs];
+  // Decoders map is keyed by payload type
+  std::map<uint8_t, Decoder> decoders_ GUARDED_BY(crit_sect_);
   bool vad_enabled_;
   Clock* clock_;  // TODO(henrik.lundin) Make const if possible.
   bool resampled_last_output_frame_ GUARDED_BY(crit_sect_);

@@ -29,7 +29,6 @@ static const int kAbsSendTimeExtensionId = 7;
 static const unsigned int kSingleStreamTargetBps = 1000000;
 
 class Clock;
-class CriticalSectionWrapper;
 class ReceiveStatistics;
 class RtpHeaderParser;
 class RTPPayloadRegistry;
@@ -41,9 +40,7 @@ class StreamObserver : public newapi::Transport, public RemoteBitrateObserver {
   typedef std::map<uint32_t, uint32_t> SsrcMap;
   StreamObserver(const SsrcMap& rtx_media_ssrcs,
                  newapi::Transport* feedback_transport,
-                 Clock* clock,
-                 RemoteBitrateEstimatorFactory* rbe_factory,
-                 RateControlType control_type);
+                 Clock* clock);
 
   void set_expected_bitrate_bps(unsigned int expected_bitrate_bps);
 
@@ -57,6 +54,8 @@ class StreamObserver : public newapi::Transport, public RemoteBitrateObserver {
   bool SendRtcp(const uint8_t* packet, size_t length) override;
 
   EventTypeWrapper Wait();
+
+  void SetRemoteBitrateEstimator(RemoteBitrateEstimator* rbe);
 
  private:
   void ReportResult(const std::string& measurement,
@@ -73,7 +72,7 @@ class StreamObserver : public newapi::Transport, public RemoteBitrateObserver {
   const rtc::scoped_ptr<RTPPayloadRegistry> payload_registry_;
   rtc::scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
 
-  const rtc::scoped_ptr<CriticalSectionWrapper> crit_;
+  rtc::CriticalSection crit_;
   unsigned int expected_bitrate_bps_ GUARDED_BY(crit_);
   unsigned int start_bitrate_bps_ GUARDED_BY(crit_);
   SsrcMap rtx_media_ssrcs_ GUARDED_BY(crit_);
@@ -103,7 +102,8 @@ class LowRateStreamObserver : public test::DirectTransport,
 
   bool SendRtp(const uint8_t* data, size_t length) override;
 
-  DeliveryStatus DeliverPacket(const uint8_t* packet, size_t length) override;
+  DeliveryStatus DeliverPacket(MediaType media_type, const uint8_t* packet,
+                               size_t length) override;
 
   bool SendRtcp(const uint8_t* packet, size_t length) override;
 
@@ -128,12 +128,13 @@ class LowRateStreamObserver : public test::DirectTransport,
   const bool rtx_used_;
   const rtc::scoped_ptr<EventWrapper> test_done_;
   const rtc::scoped_ptr<RtpHeaderParser> rtp_parser_;
+  const rtc::scoped_ptr<RTPPayloadRegistry> payload_registry_;
   rtc::scoped_ptr<RtpRtcp> rtp_rtcp_;
   internal::TransportAdapter feedback_transport_;
   const rtc::scoped_ptr<ReceiveStatistics> receive_stats_;
   rtc::scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
 
-  rtc::scoped_ptr<CriticalSectionWrapper> crit_;
+  rtc::CriticalSection crit_;
   VideoSendStream* send_stream_ GUARDED_BY(crit_);
   FakeNetworkPipe::Config forward_transport_config_ GUARDED_BY(crit_);
   TestStates test_state_ GUARDED_BY(crit_);
@@ -147,12 +148,13 @@ class LowRateStreamObserver : public test::DirectTransport,
 
 class RampUpTest : public test::CallTest {
  protected:
-  void RunRampUpTest(bool rtx,
-                     size_t num_streams,
+  void RunRampUpTest(size_t num_streams,
                      unsigned int start_bitrate_bps,
-                     const std::string& extension_type);
+                     const std::string& extension_type,
+                     bool rtx,
+                     bool red);
 
-  void RunRampUpDownUpTest(size_t number_of_streams, bool rtx);
+  void RunRampUpDownUpTest(size_t number_of_streams, bool rtx, bool red);
 };
 }  // namespace webrtc
 #endif  // WEBRTC_VIDEO_RAMPUP_TESTS_H_

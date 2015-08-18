@@ -285,18 +285,11 @@ class AudioCodingModuleMtTest : public AudioCodingModuleTest {
 
   AudioCodingModuleMtTest()
       : AudioCodingModuleTest(),
-        send_thread_(ThreadWrapper::CreateThread(CbSendThread,
-                                                 this,
-                                                 kRealtimePriority,
-                                                 "send")),
-        insert_packet_thread_(ThreadWrapper::CreateThread(CbInsertPacketThread,
-                                                          this,
-                                                          kRealtimePriority,
-                                                          "insert_packet")),
-        pull_audio_thread_(ThreadWrapper::CreateThread(CbPullAudioThread,
-                                                       this,
-                                                       kRealtimePriority,
-                                                       "pull_audio")),
+        send_thread_(ThreadWrapper::CreateThread(CbSendThread, this, "send")),
+        insert_packet_thread_(ThreadWrapper::CreateThread(
+            CbInsertPacketThread, this, "insert_packet")),
+        pull_audio_thread_(ThreadWrapper::CreateThread(
+            CbPullAudioThread, this, "pull_audio")),
         test_complete_(EventWrapper::Create()),
         send_count_(0),
         insert_packet_count_(0),
@@ -315,8 +308,11 @@ class AudioCodingModuleMtTest : public AudioCodingModuleTest {
 
   void StartThreads() {
     ASSERT_TRUE(send_thread_->Start());
+    send_thread_->SetPriority(kRealtimePriority);
     ASSERT_TRUE(insert_packet_thread_->Start());
+    insert_packet_thread_->SetPriority(kRealtimePriority);
     ASSERT_TRUE(pull_audio_thread_->Start());
+    pull_audio_thread_->SetPriority(kRealtimePriority);
   }
 
   void TearDown() override {
@@ -511,6 +507,10 @@ TEST_F(AcmIsacMtTest, DoTest) {
   EXPECT_EQ(kEventSignaled, RunTest());
 }
 
+// Disabling all of these tests on iOS for now.
+// See https://code.google.com/p/webrtc/issues/detail?id=4768 for details.
+#if !defined(WEBRTC_IOS)
+
 class AcmReceiverBitExactness : public ::testing::Test {
  public:
   static std::string PlatformChecksum(std::string win64,
@@ -559,7 +559,7 @@ class AcmReceiverBitExactness : public ::testing::Test {
 };
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_8kHzOutput DISABLED_8kHzOutput
 #else
 #define MAYBE_8kHzOutput 8kHzOutput
@@ -567,12 +567,12 @@ class AcmReceiverBitExactness : public ::testing::Test {
 TEST_F(AcmReceiverBitExactness, MAYBE_8kHzOutput) {
   Run(8000,
       PlatformChecksum("dcee98c623b147ebe1b40dd30efa896e",
-                       "6ac89c7145072c26bfeba602cd661afb",
+                       "adc92e173f908f93b96ba5844209815a",
                        "908002dc01fc4eb1d2be24eb1d3f354b"));
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_16kHzOutput DISABLED_16kHzOutput
 #else
 #define MAYBE_16kHzOutput 16kHzOutput
@@ -580,12 +580,12 @@ TEST_F(AcmReceiverBitExactness, MAYBE_8kHzOutput) {
 TEST_F(AcmReceiverBitExactness, MAYBE_16kHzOutput) {
   Run(16000,
       PlatformChecksum("f790e7a8cce4e2c8b7bb5e0e4c5dac0d",
-                       "3e888eb04f57db2c6ef952fe64f17fe6",
+                       "8cffa6abcb3e18e33b9d857666dff66a",
                        "a909560b5ca49fa472b17b7b277195e9"));
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_32kHzOutput DISABLED_32kHzOutput
 #else
 #define MAYBE_32kHzOutput 32kHzOutput
@@ -593,12 +593,12 @@ TEST_F(AcmReceiverBitExactness, MAYBE_16kHzOutput) {
 TEST_F(AcmReceiverBitExactness, MAYBE_32kHzOutput) {
   Run(32000,
       PlatformChecksum("306e0d990ee6e92de3fbecc0123ece37",
-                       "aeca37e963310f5b6552b7edea23c2f1",
+                       "3e126fe894720c3f85edadcc91964ba5",
                        "441aab4b347fb3db4e9244337aca8d8e"));
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_48kHzOutput DISABLED_48kHzOutput
 #else
 #define MAYBE_48kHzOutput 48kHzOutput
@@ -606,7 +606,7 @@ TEST_F(AcmReceiverBitExactness, MAYBE_32kHzOutput) {
 TEST_F(AcmReceiverBitExactness, MAYBE_48kHzOutput) {
   Run(48000,
       PlatformChecksum("aa7c232f63a67b2a72703593bdd172e0",
-                       "76b9e99e0a3998aa28355e7a2bd836f7",
+                       "0155665e93067c4e89256b944dd11999",
                        "4ee2730fa1daae755e8a8fd3abd779ec"));
 }
 
@@ -764,7 +764,7 @@ class AcmSenderBitExactness : public ::testing::Test,
 };
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_IsacWb30ms DISABLED_IsacWb30ms
 #else
 #define MAYBE_IsacWb30ms IsacWb30ms
@@ -784,7 +784,7 @@ TEST_F(AcmSenderBitExactness, MAYBE_IsacWb30ms) {
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_IsacWb60ms DISABLED_IsacWb60ms
 #else
 #define MAYBE_IsacWb60ms IsacWb60ms
@@ -948,7 +948,7 @@ TEST_F(AcmSenderBitExactness, DISABLED_ON_ANDROID(G722_stereo_20ms)) {
 }
 
 // Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4199
-#if defined(WEBRTC_ANDROID) && defined(__aarch64__)
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
 #define MAYBE_Opus_stereo_20ms DISABLED_Opus_stereo_20ms
 #else
 #define MAYBE_Opus_stereo_20ms Opus_stereo_20ms
@@ -966,5 +966,7 @@ TEST_F(AcmSenderBitExactness, MAYBE_Opus_stereo_20ms) {
       50,
       test::AcmReceiveTest::kStereoOutput);
 }
+
+#endif
 
 }  // namespace webrtc

@@ -44,13 +44,19 @@ char kTSanDefaultSuppressions[] =
 
 // rtc_unittest
 // https://code.google.com/p/webrtc/issues/detail?id=3911 for details.
+"race:rtc::AsyncInvoker::OnMessage\n"
 "race:rtc::FireAndForgetAsyncClosure<FunctorB>::Execute\n"
 "race:rtc::MessageQueueManager::Clear\n"
 "race:rtc::Thread::Clear\n"
+// https://code.google.com/p/webrtc/issues/detail?id=3914
+"race:rtc::AsyncInvoker::~AsyncInvoker\n"
 // https://code.google.com/p/webrtc/issues/detail?id=2080
 "race:webrtc/base/logging.cc\n"
 "race:webrtc/base/sharedexclusivelock_unittest.cc\n"
 "race:webrtc/base/signalthread_unittest.cc\n"
+// https://code.google.com/p/webrtc/issues/detail?id=4456
+"deadlock:rtc::MessageQueueManager::Clear\n"
+"deadlock:rtc::MessageQueueManager::ClearInternal\n"
 
 // libjingle_p2p_unittest
 // https://code.google.com/p/webrtc/issues/detail?id=2079
@@ -64,24 +70,19 @@ char kTSanDefaultSuppressions[] =
 
 // Potential deadlocks detected after roll in r6516.
 // https://code.google.com/p/webrtc/issues/detail?id=3509
-"deadlock:webrtc::ProcessThreadImpl::RegisterModule\n"
 "deadlock:webrtc::RTCPReceiver::SetSsrcs\n"
 "deadlock:webrtc::test::UdpSocketManagerPosixImpl::RemoveSocket\n"
 "deadlock:webrtc::vcm::VideoReceiver::RegisterPacketRequestCallback\n"
-"deadlock:webrtc::ViECaptureImpl::ConnectCaptureDevice\n"
 "deadlock:webrtc::ViEChannel::StartSend\n"
-"deadlock:webrtc::ViECodecImpl::GetSendSideDelay\n"
 "deadlock:webrtc::ViEEncoder::OnLocalSsrcChanged\n"
-"deadlock:webrtc::ViESender::RegisterSendTransport\n"
-
-// third_party/libvpx race introduced in 33bbffe..080710f range.
-// TODO(kjellander): https://code.google.com/p/webm/issues/detail?id=962
-"race:vp9_reconintra.c\n"
 
 // TODO(pbos): Trace events are racy due to lack of proper POD atomics.
 // https://code.google.com/p/webrtc/issues/detail?id=2497
 "race:*trace_event_unique_catstatic*\n"
 
+// https://code.google.com/p/webrtc/issues/detail?id=4719
+"race:webrtc::voe::TransmitMixer::PrepareDemux\n"
+"race:webrtc::voe::TransmitMixer::EnableStereoChannelSwapping\n"
 // End of suppressions.
 ;  // Please keep this semicolon.
 

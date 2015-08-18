@@ -19,7 +19,6 @@ import android.media.AudioFormat;
 import android.media.audiofx.AcousticEchoCanceler;
 import android.media.audiofx.AudioEffect;
 import android.media.audiofx.AudioEffect.Descriptor;
-import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.MediaRecorder.AudioSource;
 import android.os.Build;
@@ -32,16 +31,9 @@ class  WebRtcAudioRecord {
 
   private static final String TAG = "WebRtcAudioRecord";
 
-  // Mono recording is default.
-  private static final int CHANNELS = 1;
-
   // Default audio data format is PCM 16 bit per sample.
   // Guaranteed to be supported by all devices.
   private static final int BITS_PER_SAMPLE = 16;
-
-  // Number of bytes per audio frame.
-  // Example: 16-bit PCM in stereo => 2*(16/8)=4 [bytes/frame]
-  private static final int BYTES_PER_FRAME = CHANNELS * (BITS_PER_SAMPLE / 8);
 
   // Requested size of each recorded buffer provided to the client.
   private static final int CALLBACK_BUFFER_SIZE_MS = 10;
@@ -49,14 +41,10 @@ class  WebRtcAudioRecord {
   // Average number of callbacks per second.
   private static final int BUFFERS_PER_SECOND = 1000 / CALLBACK_BUFFER_SIZE_MS;
 
-  private ByteBuffer byteBuffer;
-  private final int bytesPerBuffer;
-  private final int framesPerBuffer;
-  private final int sampleRate;
-
   private final long nativeAudioRecord;
-  private final AudioManager audioManager;
   private final Context context;
+
+  private ByteBuffer byteBuffer;
 
   private AudioRecord audioRecord = null;
   private AudioRecordThread audioThread = null;
@@ -81,13 +69,6 @@ class  WebRtcAudioRecord {
     public void run() {
       Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
       Logd("AudioRecordThread" + WebRtcAudioUtils.getThreadInfo());
-
-      try {
-        audioRecord.startRecording();
-      } catch (IllegalStateException e) {
-          Loge("AudioRecord.startRecording failed: " + e.getMessage());
-        return;
-      }
       assertTrue(audioRecord.getRecordingState()
           == AudioRecord.RECORDSTATE_RECORDING);
 
@@ -134,45 +115,14 @@ class  WebRtcAudioRecord {
     Logd("ctor" + WebRtcAudioUtils.getThreadInfo());
     this.context = context;
     this.nativeAudioRecord = nativeAudioRecord;
-    audioManager = (AudioManager) context.getSystemService(
-        Context.AUDIO_SERVICE);
-    sampleRate = GetNativeSampleRate();
-    bytesPerBuffer = BYTES_PER_FRAME * (sampleRate / BUFFERS_PER_SECOND);
-    framesPerBuffer = sampleRate / BUFFERS_PER_SECOND;
-    byteBuffer = byteBuffer.allocateDirect(bytesPerBuffer);
-    Logd("byteBuffer.capacity: " + byteBuffer.capacity());
-
-    // Rather than passing the ByteBuffer with every callback (requiring
-    // the potentially expensive GetDirectBufferAddress) we simply have the
-    // the native class cache the address to the memory once.
-    nativeCacheDirectBufferAddress(byteBuffer, nativeAudioRecord);
-
     if (DEBUG) {
       WebRtcAudioUtils.logDeviceInfo(TAG);
     }
   }
 
-  private int GetNativeSampleRate() {
-    return WebRtcAudioUtils.GetNativeSampleRate(audioManager);
-  }
-
-  public static boolean BuiltInAECIsAvailable() {
-    // AcousticEchoCanceler was added in API level 16 (Jelly Bean).
-    if (!WebRtcAudioUtils.runningOnJellyBeanOrHigher()) {
-      return false;
-    }
-    // TODO(henrika): add black-list based on device name. We could also
-    // use uuid to exclude devices but that would require a session ID from
-    // an existing AudioRecord object.
-    return AcousticEchoCanceler.isAvailable();
-  }
-
   private boolean EnableBuiltInAEC(boolean enable) {
     Logd("EnableBuiltInAEC(" + enable + ')');
-    // AcousticEchoCanceler was added in API level 16 (Jelly Bean).
-    if (!WebRtcAudioUtils.runningOnJellyBeanOrHigher()) {
-      return false;
-    }
+    assertTrue(WebRtcAudioUtils.isAcousticEchoCancelerApproved());
     // Store the AEC state.
     useBuiltInAEC = enable;
     // Set AEC state if AEC has already been created.
@@ -187,8 +137,23 @@ class  WebRtcAudioRecord {
     return true;
   }
 
-  private int InitRecording(int sampleRate) {
-    Logd("InitRecording(sampleRate=" + sampleRate + ")");
+  private int InitRecording(int sampleRate, int channels) {
+    Logd("InitRecording(sampleRate=" + sampleRate + ", channels=" +
+        channels + ")");
+    if (!WebRtcAudioUtils.hasPermission(
+        context, android.Manifest.permission.RECORD_AUDIO)) {
+      Loge("RECORD_AUDIO permission is missing");
+      return -1;
+    }
+    final int bytesPerFrame = channels * (BITS_PER_SAMPLE / 8);
+    final int framesPerBuffer = sampleRate / BUFFERS_PER_SECOND;
+    byteBuffer = ByteBuffer.allocateDirect(bytesPerFrame * framesPerBuffer);
+    Logd("byteBuffer.capacity: " + byteBuffer.capacity());
+    // Rather than passing the ByteBuffer with every callback (requiring
+    // the potentially expensive GetDirectBufferAddress) we simply have the
+    // the native class cache the address to the memory once.
+    nativeCacheDirectBufferAddress(byteBuffer, nativeAudioRecord);
+
     // Get the minimum buffer size required for the successful creation of
     // an AudioRecord object, in byte units.
     // Note that this size doesn't guarantee a smooth recording under load.
@@ -225,11 +190,18 @@ class  WebRtcAudioRecord {
           "audio format: " + audioRecord.getAudioFormat() + ", " +
           "channels: " + audioRecord.getChannelCount() + ", " +
           "sample rate: " + audioRecord.getSampleRate());
-    Logd("AcousticEchoCanceler.isAvailable: " + BuiltInAECIsAvailable());
-    if (!BuiltInAECIsAvailable()) {
+    Logd("AcousticEchoCanceler.isAvailable: " + builtInAECIsAvailable());
+    if (!builtInAECIsAvailable()) {
       return framesPerBuffer;
     }
-
+    if (WebRtcAudioUtils.deviceIsBlacklistedForHwAecUsage()) {
+      // Just in case, ensure that no attempt has been done to enable the
+      // HW AEC on a blacklisted device.
+      assertTrue(!useBuiltInAEC);
+    }
+    // We create an AEC also for blacklisted devices since it is possible that
+    // HW EAC is enabled by default. Hence, the AEC object is needed to be
+    // able to check the current state and to disable the AEC if enabled.
     aec = AcousticEchoCanceler.create(audioRecord.getAudioSessionId());
     if (aec == null) {
       Loge("AcousticEchoCanceler.create failed");
@@ -253,6 +225,16 @@ class  WebRtcAudioRecord {
     Logd("StartRecording");
     assertTrue(audioRecord != null);
     assertTrue(audioThread == null);
+    try {
+      audioRecord.startRecording();
+    } catch (IllegalStateException e) {
+      Loge("AudioRecord.startRecording failed: " + e.getMessage());
+      return false;
+    }
+    if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+      Loge("AudioRecord.startRecording failed");
+      return false;
+    }
     audioThread = new AudioRecordThread("AudioRecordJavaThread");
     audioThread.start();
     return true;
@@ -272,7 +254,13 @@ class  WebRtcAudioRecord {
     return true;
   }
 
-  /** Helper method which throws an exception  when an assertion has failed. */
+  // Returns true if built-in AEC is available. Does not take blacklisting
+  // into account.
+  private static boolean builtInAECIsAvailable() {
+    return WebRtcAudioUtils.isAcousticEchoCancelerSupported();
+  }
+
+  // Helper method which throws an exception  when an assertion has failed.
   private static void assertTrue(boolean condition) {
     if (!condition) {
       throw new AssertionError("Expected condition to be true");

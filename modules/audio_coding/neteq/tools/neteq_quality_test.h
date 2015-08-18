@@ -11,11 +11,12 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_NETEQ_TOOLS_NETEQ_QUALITY_TEST_H_
 #define WEBRTC_MODULES_AUDIO_CODING_NETEQ_TOOLS_NETEQ_QUALITY_TEST_H_
 
+#include <fstream>
 #include <gflags/gflags.h>
-#include <string>
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_coding/neteq/interface/neteq.h"
+#include "webrtc/modules/audio_coding/neteq/tools/audio_sink.h"
 #include "webrtc/modules/audio_coding/neteq/tools/input_audio_file.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtp_generator.h"
 #include "webrtc/typedefs.h"
@@ -65,12 +66,10 @@ class NetEqQualityTest : public ::testing::Test {
   NetEqQualityTest(int block_duration_ms,
                    int in_sampling_khz,
                    int out_sampling_khz,
-                   enum NetEqDecoder decoder_type,
-                   int channels,
-                   std::string in_filename,
-                   std::string out_filename);
+                   enum NetEqDecoder decoder_type);
+  virtual ~NetEqQualityTest();
+
   void SetUp() override;
-  void TearDown() override;
 
   // EncodeBlock(...) does the following:
   // 1. encodes a block of audio, saved in |in_data| and has a length of
@@ -93,10 +92,14 @@ class NetEqQualityTest : public ::testing::Test {
   // |neteq_|.
   int Transmit();
 
-  // Simulate(...) runs encoding / transmitting / decoding up to |end_time_ms|
-  // (miliseconds), the resulted audio is stored in the file with the name of
-  // |out_filename_|.
-  void Simulate(int end_time_ms);
+  // Runs encoding / transmitting / decoding.
+  void Simulate();
+
+  // Write to log file. Usage Log() << ...
+  std::ofstream& Log();
+
+  enum NetEqDecoder decoder_type_;
+  const int channels_;
 
  private:
   int decoded_time_ms_;
@@ -106,11 +109,6 @@ class NetEqQualityTest : public ::testing::Test {
   const int block_duration_ms_;
   const int in_sampling_khz_;
   const int out_sampling_khz_;
-  const enum NetEqDecoder decoder_type_;
-  const int channels_;
-  const std::string in_filename_;
-  const std::string out_filename_;
-  const std::string log_filename_;
 
   // Number of samples per channel in a frame.
   const int in_size_samples_;
@@ -122,8 +120,8 @@ class NetEqQualityTest : public ::testing::Test {
   int max_payload_bytes_;
 
   rtc::scoped_ptr<InputAudioFile> in_file_;
-  FILE* out_file_;
-  FILE* log_file_;
+  rtc::scoped_ptr<AudioSink> output_;
+  std::ofstream log_file_;
 
   rtc::scoped_ptr<RtpGenerator> rtp_generator_;
   rtc::scoped_ptr<NetEq> neteq_;

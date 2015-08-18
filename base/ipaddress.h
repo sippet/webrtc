@@ -109,6 +109,9 @@ class IPAddress {
   // For socketaddress' benefit. Returns the IP in host byte order.
   uint32 v4AddressAsHostOrderInteger() const;
 
+  // Whether this is an unspecified IP address.
+  bool IsNil() const;
+
   static void set_strip_sensitive(bool enable);
 
  private:
@@ -163,6 +166,7 @@ size_t HashIP(const IPAddress& ip);
 bool IPIs6Bone(const IPAddress& ip);
 bool IPIs6To4(const IPAddress& ip);
 bool IPIsLinkLocal(const IPAddress& ip);
+bool IPIsMacBased(const IPAddress& ip);
 bool IPIsSiteLocal(const IPAddress& ip);
 bool IPIsTeredo(const IPAddress& ip);
 bool IPIsULA(const IPAddress& ip);

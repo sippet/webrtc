@@ -54,11 +54,14 @@ public:
     void SetPayloadType(uint8_t payloadType) { _payloadType = payloadType; };
     void SetInternalSource(bool internalSource) { _internalSource = internalSource; };
 
+    void SetRotation(VideoRotation rotation) { _rotation = rotation; }
+
 private:
     VCMPacketizationCallback* _sendCallback;
     media_optimization::MediaOptimization* _mediaOpt;
     uint8_t _payloadType;
     bool _internalSource;
+    VideoRotation _rotation;
 
     EncodedImageCallback* post_encode_callback_;
 
@@ -96,7 +99,7 @@ public:
     * cameraFrameRate   : Request or information from the remote side
     * frameType         : The requested frame type to encode
     */
-    int32_t Encode(const I420VideoFrame& inputFrame,
+    int32_t Encode(const VideoFrame& inputFrame,
                    const CodecSpecificInfo* codecSpecificInfo,
                    const std::vector<FrameType>& frameTypes);
     /**
@@ -133,13 +136,22 @@ public:
 
     bool InternalSource() const;
 
+    void OnDroppedFrame();
+
+    bool SupportsNativeHandle() const;
+
+    int GetTargetFramerate();
+
 private:
     VideoEncoder* const encoder_;
     VideoEncoderRateObserver* const rate_observer_;
+    VCMEncodedFrameCallback*  vcm_encoded_frame_callback_;
     uint32_t bit_rate_;
     uint32_t frame_rate_;
     const bool internal_source_;
     mutable rtc::CriticalSection rates_lock_;
+    VideoRotation rotation_;
+    bool is_screenshare_;
 }; // end of VCMGenericEncoder class
 
 }  // namespace webrtc

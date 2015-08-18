@@ -79,7 +79,8 @@ enum RTPExtensionType {
   kRtpExtensionTransmissionTimeOffset,
   kRtpExtensionAudioLevel,
   kRtpExtensionAbsoluteSendTime,
-  kRtpExtensionVideoRotation
+  kRtpExtensionVideoRotation,
+  kRtpExtensionTransportSequenceNumber,
 };
 
 enum RTCPAppSubTypes
@@ -87,26 +88,27 @@ enum RTCPAppSubTypes
     kAppSubtypeBwe     = 0x00
 };
 
-enum RTCPPacketType
-{
-    kRtcpReport         = 0x0001,
-    kRtcpSr             = 0x0002,
-    kRtcpRr             = 0x0004,
-    kRtcpBye            = 0x0008,
-    kRtcpPli            = 0x0010,
-    kRtcpNack           = 0x0020,
-    kRtcpFir            = 0x0040,
-    kRtcpTmmbr          = 0x0080,
-    kRtcpTmmbn          = 0x0100,
-    kRtcpSrReq          = 0x0200,
-    kRtcpXrVoipMetric   = 0x0400,
-    kRtcpApp            = 0x0800,
-    kRtcpSli            = 0x4000,
-    kRtcpRpsi           = 0x8000,
-    kRtcpRemb           = 0x10000,
-    kRtcpTransmissionTimeOffset = 0x20000,
-    kRtcpXrReceiverReferenceTime = 0x40000,
-    kRtcpXrDlrrReportBlock = 0x80000
+// TODO(sprang): Make this an enum class once rtcp_receiver has been cleaned up.
+enum RTCPPacketType : uint32_t {
+  kRtcpReport = 0x0001,
+  kRtcpSr = 0x0002,
+  kRtcpRr = 0x0004,
+  kRtcpSdes = 0x0008,
+  kRtcpBye = 0x0010,
+  kRtcpPli = 0x0020,
+  kRtcpNack = 0x0040,
+  kRtcpFir = 0x0080,
+  kRtcpTmmbr = 0x0100,
+  kRtcpTmmbn = 0x0200,
+  kRtcpSrReq = 0x0400,
+  kRtcpXrVoipMetric = 0x0800,
+  kRtcpApp = 0x1000,
+  kRtcpSli = 0x4000,
+  kRtcpRpsi = 0x8000,
+  kRtcpRemb = 0x10000,
+  kRtcpTransmissionTimeOffset = 0x20000,
+  kRtcpXrReceiverReferenceTime = 0x40000,
+  kRtcpXrDlrrReportBlock = 0x80000
 };
 
 enum KeyFrameRequestMethod
@@ -128,12 +130,12 @@ enum NACKMethod
     kNackRtcp     = 2
 };
 
-enum RetransmissionMode {
-  kRetransmitOff          = 0x0,
-  kRetransmitFECPackets   = 0x1,
-  kRetransmitBaseLayer    = 0x2,
+enum RetransmissionMode : uint8_t {
+  kRetransmitOff = 0x0,
+  kRetransmitFECPackets = 0x1,
+  kRetransmitBaseLayer = 0x2,
   kRetransmitHigherLayers = 0x4,
-  kRetransmitAllPackets   = 0xFF
+  kRetransmitAllPackets = 0xFF
 };
 
 enum RtxMode {
@@ -250,8 +252,6 @@ public:
     virtual void OnIncomingCSRCChanged( const int32_t id,
                                         const uint32_t CSRC,
                                         const bool added) = 0;
-
-    virtual void ResetStatistics(uint32_t ssrc) = 0;
 };
 
 class RtpAudioFeedback {
@@ -293,6 +293,17 @@ class RtcpBandwidthObserver {
   virtual ~RtcpBandwidthObserver() {}
 };
 
+class SendTimeObserver {
+ public:
+  SendTimeObserver() {}
+  virtual ~SendTimeObserver() {}
+
+  // Transport-wide sequence number and timestamp (system time in milliseconds),
+  // of when the packet was put on the wire.
+  virtual void OnPacketSent(uint16_t transport_sequence_number,
+                            int64_t send_time) = 0;
+};
+
 class RtcpRttStats {
  public:
   virtual void OnRttUpdate(int64_t rtt) = 0;
@@ -321,8 +332,6 @@ class NullRtpFeedback : public RtpFeedback {
   void OnIncomingCSRCChanged(const int32_t id,
                              const uint32_t CSRC,
                              const bool added) override {}
-
-  void ResetStatistics(uint32_t ssrc) override {}
 };
 
 // Null object version of RtpData.
@@ -350,6 +359,19 @@ class NullRtpAudioFeedback : public RtpAudioFeedback {
                             const uint8_t event,
                             const uint16_t lengthMs,
                             const uint8_t volume) override {}
+};
+
+// Statistics about packet loss for a single directional connection. All values
+// are totals since the connection initiated.
+struct RtpPacketLossStats {
+  // The number of packets lost in events where no adjacent packets were also
+  // lost.
+  uint64_t single_packet_loss_count;
+  // The number of events in which more than one adjacent packet was lost.
+  uint64_t multiple_packet_loss_event_count;
+  // The number of packets lost in events where more than one adjacent packet
+  // was lost.
+  uint64_t multiple_packet_loss_packet_count;
 };
 
 }  // namespace webrtc

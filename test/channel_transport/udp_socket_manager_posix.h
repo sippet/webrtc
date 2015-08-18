@@ -68,14 +68,14 @@ public:
     virtual bool RemoveSocket(UdpSocketWrapper* s);
 
 protected:
-    static bool Run(ThreadObj obj);
+    static bool Run(void* obj);
     bool Process();
     void UpdateSocketMap();
 
 private:
     typedef std::list<UdpSocketWrapper*> SocketList;
     typedef std::list<SOCKET> FdList;
-    ThreadWrapper* _thread;
+    rtc::scoped_ptr<ThreadWrapper> _thread;
     CriticalSectionWrapper* _critSectList;
 
     fd_set _readFds;

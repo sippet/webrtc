@@ -9,7 +9,7 @@
 {
   'targets': [
     {
-      'target_name': 'iSACFix',
+      'target_name': 'isac_fix',
       'type': 'static_library',
       'dependencies': [
         '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
@@ -89,13 +89,11 @@
             'fix/source/lattice_c.c',
             'fix/source/pitch_filter_c.c',
           ],
-          'conditions': [
-            ['arm_neon==1 or arm_neon_optional==1', {
-              'dependencies': [ 'isac_neon' ],
-            }],
-          ],
         }],
-        ['target_arch=="mipsel" and mips_arch_variant!="r6" and android_webview_build==0', {
+        ['build_with_neon==1', {
+          'dependencies': ['isac_neon', ],
+        }],
+        ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
           'sources': [
             'fix/source/entropy_coding_mips.c',
             'fix/source/filters_mips.c',
@@ -128,7 +126,7 @@
     },
   ],
   'conditions': [
-    ['target_arch=="arm" and arm_version>=7', {
+    ['build_with_neon==1', {
       'targets': [
         {
           'target_name': 'isac_neon',
@@ -137,25 +135,12 @@
           'dependencies': [
             '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
           ],
-          'include_dirs': [
-            '<(webrtc_root)',
-          ],
           'sources': [
             'fix/source/entropy_coding_neon.c',
-            'fix/source/filterbanks_neon.S',
-            'fix/source/filters_neon.S',
-            'fix/source/lattice_neon.S',
-            'fix/source/lpc_masking_model_neon.S',
-            'fix/source/transform_neon.S',
-          ],
-          'conditions': [
-            # Disable LTO in isac_neon target due to compiler bug
-            ['use_lto==1', {
-              'cflags!': [
-                '-flto',
-                '-ffat-lto-objects',
-              ],
-            }],
+            'fix/source/filterbanks_neon.c',
+            'fix/source/filters_neon.c',
+            'fix/source/lattice_neon.c',
+            'fix/source/transform_neon.c',
           ],
         },
       ],

@@ -13,6 +13,7 @@
 
 #include <vector>
 
+#include "webrtc/modules/remote_bitrate_estimator/include/send_time_history.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe.h"
 
 namespace webrtc {
@@ -26,6 +27,7 @@ class FullBweSender : public BweSender, public RemoteBitrateObserver {
 
   int GetFeedbackIntervalMs() const override;
   void GiveFeedback(const FeedbackPacket& feedback) override;
+  void OnPacketsSent(const Packets& packets) override;
   void OnReceiveBitrateChanged(const std::vector<unsigned int>& ssrcs,
                                unsigned int bitrate) override;
   int64_t TimeUntilNextProcess() override;
@@ -39,6 +41,9 @@ class FullBweSender : public BweSender, public RemoteBitrateObserver {
  private:
   Clock* const clock_;
   RTCPReportBlock report_block_;
+  SendTimeHistory send_time_history_;
+  bool has_received_ack_;
+  uint16_t last_acked_seq_num_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(FullBweSender);
 };

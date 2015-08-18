@@ -96,11 +96,11 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
   memmove(enh_period, &enh_period[new_blocks],
           (ENH_NBLOCKS_TOT - new_blocks) * sizeof(*enh_period));
 
-  k=WebRtcSpl_DownsampleFast(
+  k = WebRtcSpl_DownsampleFast(
       enh_buf+ENH_BUFL-inLen,    /* Input samples */
-      (int16_t)(inLen+ENH_BUFL_FILTEROVERHEAD),
+      inLen + ENH_BUFL_FILTEROVERHEAD,
       downsampled,
-      (int16_t)(inLen / 2),
+      inLen / 2,
       (int16_t*)WebRtcIlbcfix_kLpFiltCoefs,  /* Coefficients in Q12 */
       FILTERORDER_DS_PLUS1,    /* Length of filter (order-1) */
       FACTOR_DS,
@@ -110,19 +110,17 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
   for(iblock = 0; iblock<new_blocks; iblock++){
 
     /* references */
-    i = 60 + iblock * ENH_BLOCKL_HALF;
-    target=downsampled+i;
-    regressor=downsampled+i-10;
+    target = downsampled + 60 + iblock * ENH_BLOCKL_HALF;
+    regressor = target - 10;
 
     /* scaling */
-    max16=WebRtcSpl_MaxAbsValueW16(&regressor[-50],
-                                   (int16_t)(ENH_BLOCKL_HALF+50-1));
+    max16 = WebRtcSpl_MaxAbsValueW16(&regressor[-50], ENH_BLOCKL_HALF + 50 - 1);
     shifts = WebRtcSpl_GetSizeInBits((uint32_t)(max16 * max16)) - 25;
     shifts = WEBRTC_SPL_MAX(0, shifts);
 
     /* compute cross correlation */
-    WebRtcSpl_CrossCorrelation(corr32, target, regressor,
-                               ENH_BLOCKL_HALF, 50, (int16_t)shifts, -1);
+    WebRtcSpl_CrossCorrelation(corr32, target, regressor, ENH_BLOCKL_HALF, 50,
+                               shifts, -1);
 
     /* Find 3 highest correlations that should be compared for the
        highest (corr*corr)/ener */
@@ -151,7 +149,7 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
       corr16[i] = (int16_t)WEBRTC_SPL_SHIFT_W32(corrmax[i], corrSh);
       corr16[i] = (int16_t)((corr16[i] * corr16[i]) >> 16);
       en16[i] = (int16_t)WEBRTC_SPL_SHIFT_W32(ener, enerSh);
-      totsh[i] = enerSh - WEBRTC_SPL_LSHIFT_W32(corrSh, 1);
+      totsh[i] = enerSh - (corrSh << 1);
     }
 
     /* Compare lagmax[0..3] for the (corr^2)/ener criteria */
@@ -200,15 +198,15 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
     regressor=in+tlag-1;
 
     /* scaling */
-    max16=WebRtcSpl_MaxAbsValueW16(regressor, (int16_t)(plc_blockl+3-1));
+    max16 = WebRtcSpl_MaxAbsValueW16(regressor, plc_blockl + 3 - 1);
     if (max16>5000)
       shifts=2;
     else
       shifts=0;
 
     /* compute cross correlation */
-    WebRtcSpl_CrossCorrelation(corr32, target, regressor,
-                               plc_blockl, 3, (int16_t)shifts, 1);
+    WebRtcSpl_CrossCorrelation(corr32, target, regressor, plc_blockl, 3, shifts,
+                               1);
 
     /* find lag */
     lag=WebRtcSpl_MaxIndexW32(corr32, 3);
@@ -278,8 +276,7 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
                                                       (int16_t)tmp1);
 
         /* Calculate the Sqrt of the energy in Q15 ((14+16)/2) */
-        SqrtEnChange = (int16_t)WebRtcSpl_SqrtFloor(
-            WEBRTC_SPL_LSHIFT_W32((int32_t)EnChange, 14));
+        SqrtEnChange = (int16_t)WebRtcSpl_SqrtFloor(EnChange << 14);
 
 
         /* Multiply first part of vector with 2*SqrtEnChange */
@@ -339,8 +336,8 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
           enh_bufPtr1,
           synt,
           &iLBCdec_inst->old_syntdenum[
-                                       (iLBCdec_inst->nsub-1)*(LPC_FILTERORDER+1)],
-                                       LPC_FILTERORDER+1, (int16_t)lag);
+              (iLBCdec_inst->nsub-1)*(LPC_FILTERORDER+1)],
+          LPC_FILTERORDER+1, lag);
 
       WEBRTC_SPL_MEMCPY_W16(&synt[-LPC_FILTERORDER], &synt[lag-LPC_FILTERORDER],
                             LPC_FILTERORDER);
@@ -350,8 +347,8 @@ int WebRtcIlbcfix_EnhancerInterface( /* (o) Estimated lag in end of in[] */
       WebRtcSpl_FilterARFastQ12(
           enh_bufPtr1, synt,
           &iLBCdec_inst->old_syntdenum[
-                                       (iLBCdec_inst->nsub-1)*(LPC_FILTERORDER+1)],
-                                       LPC_FILTERORDER+1, (int16_t)lag);
+              (iLBCdec_inst->nsub-1)*(LPC_FILTERORDER+1)],
+          LPC_FILTERORDER+1, lag);
 
       WEBRTC_SPL_MEMCPY_W16(iLBCdec_inst->syntMem, &synt[lag-LPC_FILTERORDER],
                             LPC_FILTERORDER);

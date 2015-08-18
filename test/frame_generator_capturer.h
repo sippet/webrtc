@@ -12,6 +12,7 @@
 
 #include <string>
 
+#include "webrtc/base/criticalsection.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/test/video_capturer.h"
 #include "webrtc/typedefs.h"
@@ -19,7 +20,7 @@
 namespace webrtc {
 
 class CriticalSectionWrapper;
-class EventWrapper;
+class EventTimerWrapper;
 class ThreadWrapper;
 
 namespace test {
@@ -28,13 +29,13 @@ class FrameGenerator;
 
 class FrameGeneratorCapturer : public VideoCapturer {
  public:
-  static FrameGeneratorCapturer* Create(VideoSendStreamInput* input,
+  static FrameGeneratorCapturer* Create(VideoCaptureInput* input,
                                         size_t width,
                                         size_t height,
                                         int target_fps,
                                         Clock* clock);
 
-  static FrameGeneratorCapturer* CreateFromYuvFile(VideoSendStreamInput* input,
+  static FrameGeneratorCapturer* CreateFromYuvFile(VideoCaptureInput* input,
                                                    const std::string& file_name,
                                                    size_t width,
                                                    size_t height,
@@ -44,11 +45,12 @@ class FrameGeneratorCapturer : public VideoCapturer {
 
   void Start() override;
   void Stop() override;
+  void ForceFrame();
 
   int64_t first_frame_capture_time() const { return first_frame_capture_time_; }
 
   FrameGeneratorCapturer(Clock* clock,
-                         VideoSendStreamInput* input,
+                         VideoCaptureInput* input,
                          FrameGenerator* frame_generator,
                          int target_fps);
   bool Init();
@@ -60,8 +62,8 @@ class FrameGeneratorCapturer : public VideoCapturer {
   Clock* const clock_;
   bool sending_;
 
-  rtc::scoped_ptr<EventWrapper> tick_;
-  rtc::scoped_ptr<CriticalSectionWrapper> lock_;
+  rtc::scoped_ptr<EventTimerWrapper> tick_;
+  rtc::CriticalSection lock_;
   rtc::scoped_ptr<ThreadWrapper> thread_;
   rtc::scoped_ptr<FrameGenerator> frame_generator_;
 

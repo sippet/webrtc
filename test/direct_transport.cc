@@ -18,20 +18,19 @@ namespace webrtc {
 namespace test {
 
 DirectTransport::DirectTransport()
-    : lock_(CriticalSectionWrapper::CreateCriticalSection()),
-      packet_event_(EventWrapper::Create()),
-      thread_(ThreadWrapper::CreateThread(NetworkProcess, this)),
+    : packet_event_(EventWrapper::Create()),
+      thread_(
+          ThreadWrapper::CreateThread(NetworkProcess, this, "NetworkProcess")),
       clock_(Clock::GetRealTimeClock()),
       shutting_down_(false),
       fake_network_(FakeNetworkPipe::Config()) {
   EXPECT_TRUE(thread_->Start());
 }
 
-DirectTransport::DirectTransport(
-    const FakeNetworkPipe::Config& config)
-    : lock_(CriticalSectionWrapper::CreateCriticalSection()),
-      packet_event_(EventWrapper::Create()),
-      thread_(ThreadWrapper::CreateThread(NetworkProcess, this)),
+DirectTransport::DirectTransport(const FakeNetworkPipe::Config& config)
+    : packet_event_(EventWrapper::Create()),
+      thread_(
+          ThreadWrapper::CreateThread(NetworkProcess, this, "NetworkProcess")),
       clock_(Clock::GetRealTimeClock()),
       shutting_down_(false),
       fake_network_(config) {
@@ -46,7 +45,7 @@ void DirectTransport::SetConfig(const FakeNetworkPipe::Config& config) {
 
 void DirectTransport::StopSending() {
   {
-    CriticalSectionScoped crit_(lock_.get());
+    rtc::CritScope crit(&lock_);
     shutting_down_ = true;
   }
 
@@ -88,7 +87,7 @@ bool DirectTransport::SendPackets() {
         return true;
     }
   }
-  CriticalSectionScoped crit(lock_.get());
+  rtc::CritScope crit(&lock_);
   return shutting_down_ ? false : true;
 }
 }  // namespace test

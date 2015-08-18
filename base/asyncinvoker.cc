@@ -10,6 +10,8 @@
 
 #include "webrtc/base/asyncinvoker.h"
 
+#include "webrtc/base/logging.h"
+
 namespace rtc {
 
 AsyncInvoker::AsyncInvoker() : destroying_(false) {}
@@ -60,6 +62,18 @@ void AsyncInvoker::DoInvoke(Thread* thread,
     return;
   }
   thread->Post(this, id, new ScopedRefMessageData<AsyncClosure>(closure));
+}
+
+void AsyncInvoker::DoInvokeDelayed(Thread* thread,
+                                   const scoped_refptr<AsyncClosure>& closure,
+                                   uint32 delay_ms,
+                                   uint32 id) {
+  if (destroying_) {
+    LOG(LS_WARNING) << "Tried to invoke while destroying the invoker.";
+    return;
+  }
+  thread->PostDelayed(delay_ms, this, id,
+                      new ScopedRefMessageData<AsyncClosure>(closure));
 }
 
 NotifyingAsyncClosureBase::NotifyingAsyncClosureBase(AsyncInvoker* invoker,

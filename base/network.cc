@@ -128,6 +128,26 @@ std::string AdapterTypeToString(AdapterType type) {
   }
 }
 
+bool IsIgnoredIPv6(const IPAddress& ip) {
+  if (ip.family() != AF_INET6) {
+    return false;
+  }
+
+  // Link-local addresses require scope id to be bound successfully.
+  // However, our IPAddress structure doesn't carry that so the
+  // information is lost and causes binding failure.
+  if (IPIsLinkLocal(ip)) {
+    return true;
+  }
+
+  // Any MAC based IPv6 should be avoided to prevent the MAC tracking.
+  if (IPIsMacBased(ip)) {
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 std::string MakeNetworkKey(const std::string& name, const IPAddress& prefix,
@@ -334,6 +354,11 @@ void BasicNetworkManager::ConvertIfAddrs(struct ifaddrs* interfaces,
         if (ipv6_enabled()) {
           ip = IPAddress(
               reinterpret_cast<sockaddr_in6*>(cursor->ifa_addr)->sin6_addr);
+
+          if (IsIgnoredIPv6(ip)) {
+            continue;
+          }
+
           mask = IPAddress(
               reinterpret_cast<sockaddr_in6*>(cursor->ifa_netmask)->sin6_addr);
           scope_id =
@@ -356,9 +381,15 @@ void BasicNetworkManager::ConvertIfAddrs(struct ifaddrs* interfaces,
     if (existing_network == current_networks.end()) {
       AdapterType adapter_type = ADAPTER_TYPE_UNKNOWN;
       if (cursor->ifa_flags & IFF_LOOPBACK) {
-        // TODO(phoglund): Need to recognize other types as well.
         adapter_type = ADAPTER_TYPE_LOOPBACK;
       }
+#if defined(WEBRTC_IOS)
+      // Cell networks are pdp_ipN on iOS.
+      if (strncmp(cursor->ifa_name, "pdp_ip", 6) == 0) {
+        adapter_type = ADAPTER_TYPE_CELLULAR;
+      }
+#endif
+      // TODO(phoglund): Need to recognize other types as well.
       scoped_ptr<Network> network(new Network(cursor->ifa_name,
                                               cursor->ifa_name,
                                               prefix,
@@ -489,6 +520,11 @@ bool BasicNetworkManager::CreateNetworks(bool include_ignored,
                   reinterpret_cast<sockaddr_in6*>(address->Address.lpSockaddr);
               scope_id = v6_addr->sin6_scope_id;
               ip = IPAddress(v6_addr->sin6_addr);
+
+              if (IsIgnoredIPv6(ip)) {
+                continue;
+              }
+
               break;
             } else {
               continue;
@@ -602,13 +638,6 @@ bool BasicNetworkManager::IsIgnoredNetwork(const Network& network) const {
     return (network.prefix().v4AddressAsHostOrderInteger() < 0x01000000);
   }
 
-  // Linklocal addresses require scope id to be bound successfully. However, our
-  // IPAddress structure doesn't carry that so the information is lost and
-  // causes binding failure.
-  if (network.prefix().family() == AF_INET6 &&
-      IPIsLinkLocal(network.GetBestIP())) {
-    return true;
-  }
   return false;
 }
 

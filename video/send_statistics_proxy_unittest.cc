@@ -128,16 +128,6 @@ TEST_F(SendStatisticsProxyTest, RtcpStatistics) {
   ExpectEqual(expected_, stats);
 }
 
-TEST_F(SendStatisticsProxyTest, CaptureFramerate) {
-  const int capture_fps = 31;
-
-  ViECaptureObserver* capture_observer = statistics_proxy_.get();
-  capture_observer->CapturedFrameRate(0, capture_fps);
-
-  VideoSendStream::Stats stats = statistics_proxy_->GetStats();
-  EXPECT_EQ(capture_fps, stats.input_frame_rate);
-}
-
 TEST_F(SendStatisticsProxyTest, EncodedBitrateAndFramerate) {
   const int media_bitrate_bps = 500;
   const int encode_fps = 29;
@@ -372,6 +362,46 @@ TEST_F(SendStatisticsProxyTest, EncodedResolutionTimesOut) {
   EXPECT_EQ(0, stats.substreams[config_.rtp.ssrcs[0]].height);
   EXPECT_EQ(kEncodedWidth, stats.substreams[config_.rtp.ssrcs[1]].width);
   EXPECT_EQ(kEncodedHeight, stats.substreams[config_.rtp.ssrcs[1]].height);
+}
+
+TEST_F(SendStatisticsProxyTest, ClearsResolutionFromInactiveSsrcs) {
+  static const int kEncodedWidth = 123;
+  static const int kEncodedHeight = 81;
+  EncodedImage encoded_image;
+  encoded_image._encodedWidth = kEncodedWidth;
+  encoded_image._encodedHeight = kEncodedHeight;
+
+  RTPVideoHeader rtp_video_header;
+
+  rtp_video_header.simulcastIdx = 0;
+  statistics_proxy_->OnSendEncodedImage(encoded_image, &rtp_video_header);
+  rtp_video_header.simulcastIdx = 1;
+  statistics_proxy_->OnSendEncodedImage(encoded_image, &rtp_video_header);
+
+  statistics_proxy_->OnInactiveSsrc(config_.rtp.ssrcs[1]);
+  VideoSendStream::Stats stats = statistics_proxy_->GetStats();
+  EXPECT_EQ(kEncodedWidth, stats.substreams[config_.rtp.ssrcs[0]].width);
+  EXPECT_EQ(kEncodedHeight, stats.substreams[config_.rtp.ssrcs[0]].height);
+  EXPECT_EQ(0, stats.substreams[config_.rtp.ssrcs[1]].width);
+  EXPECT_EQ(0, stats.substreams[config_.rtp.ssrcs[1]].height);
+}
+
+TEST_F(SendStatisticsProxyTest, ClearsBitratesFromInactiveSsrcs) {
+  BitrateStatistics bitrate;
+  bitrate.bitrate_bps = 42;
+  BitrateStatisticsObserver* observer = statistics_proxy_.get();
+  observer->Notify(bitrate, bitrate, config_.rtp.ssrcs[0]);
+  observer->Notify(bitrate, bitrate, config_.rtp.ssrcs[1]);
+
+  statistics_proxy_->OnInactiveSsrc(config_.rtp.ssrcs[1]);
+
+  VideoSendStream::Stats stats = statistics_proxy_->GetStats();
+  EXPECT_EQ(static_cast<int>(bitrate.bitrate_bps),
+            stats.substreams[config_.rtp.ssrcs[0]].total_bitrate_bps);
+  EXPECT_EQ(static_cast<int>(bitrate.bitrate_bps),
+            stats.substreams[config_.rtp.ssrcs[0]].retransmit_bitrate_bps);
+  EXPECT_EQ(0, stats.substreams[config_.rtp.ssrcs[1]].total_bitrate_bps);
+  EXPECT_EQ(0, stats.substreams[config_.rtp.ssrcs[1]].retransmit_bitrate_bps);
 }
 
 }  // namespace webrtc
