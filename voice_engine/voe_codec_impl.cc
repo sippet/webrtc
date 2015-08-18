@@ -425,6 +425,23 @@ int VoECodecImpl::SetOpusDtx(int channel, bool enable_dtx) {
   return channelPtr->SetOpusDtx(enable_dtx);
 }
 
+int VoECodecImpl::SetG729Dtx(int channel, bool enable_dtx) {
+  WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
+               "SetG729Dtx(channel=%d, enable_dtx=%d)", channel, enable_dtx);
+  if (!_shared->statistics().Initialized()) {
+    _shared->SetLastError(VE_NOT_INITED, kTraceError);
+    return -1;
+  }
+  voe::ChannelOwner ch = _shared->channel_manager().GetChannel(channel);
+  voe::Channel* channelPtr = ch.channel();
+  if (channelPtr == NULL) {
+    _shared->SetLastError(VE_CHANNEL_NOT_VALID, kTraceError,
+                          "SetG729Dtx failed to locate channel");
+    return -1;
+  }
+  return channelPtr->SetG729Dtx(enable_dtx);
+}
+
 void VoECodecImpl::ACMToExternalCodecRepresentation(CodecInst& toInst,
                                                     const CodecInst& fromInst) {
   toInst = fromInst;

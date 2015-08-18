@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "testing/gtest/include/gtest/gtest.h"
-#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 #include "webrtc/modules/audio_coding/codecs/g729/g729_inst.h"
 #include "webrtc/modules/audio_coding/neteq/tools/audio_loop.h"
 #include "webrtc/test/testsupport/fileutils.h"

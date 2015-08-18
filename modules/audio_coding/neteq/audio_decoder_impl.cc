@@ -32,7 +32,7 @@
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 #endif
 #ifdef WEBRTC_CODEC_G729
-#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 #endif
 #ifdef WEBRTC_CODEC_PCM16
 #include "webrtc/modules/audio_coding/codecs/pcm16b/include/pcm16b.h"
@@ -404,8 +404,15 @@ AudioDecoderG729::~AudioDecoderG729() {
   WebRtcG729_DecoderFree(dec_state_);
 }
 
-int AudioDecoderG729::Decode(const uint8_t* encoded, size_t encoded_len,
-                             int16_t* decoded, SpeechType* speech_type) {
+size_t AudioDecoderG729::Channels() const {
+  return 1;
+}
+
+int AudioDecoderG729::DecodeInternal(const uint8_t* encoded,
+                                     size_t encoded_len,
+                                     int sample_rate_hz,
+                                     int16_t* decoded,
+                                     SpeechType* speech_type) {
   int16_t temp_type = 1;  // Default is speech.
   int16_t ret = WebRtcG729_Decode(dec_state_, encoded,
                                   static_cast<int16_t>(encoded_len), decoded,
@@ -423,7 +430,7 @@ int AudioDecoderG729::Init() {
 }
 
 int AudioDecoderG729::PacketDuration(const uint8_t* encoded,
-                                     size_t encoded_len) {
+                                     size_t encoded_len) const {
   // 10 bytes = 80 samples (10ms @ 8kHz)
   return (encoded_len / L_PACKED_G729A) * 80;
 }

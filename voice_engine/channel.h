@@ -208,6 +208,7 @@ public:
     int32_t SetSendCNPayloadType(int type, PayloadFrequencies frequency);
     int SetOpusMaxPlaybackRate(int frequency_hz);
     int SetOpusDtx(bool enable_dtx);
+    int SetG729Dtx(bool enable_dtx);
 
     // VoENetwork
     int32_t RegisterExternalTransport(Transport& transport);

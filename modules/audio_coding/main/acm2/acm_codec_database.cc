@@ -70,6 +70,10 @@ const CodecInst ACMCodecDB::database_[] = {
   // Mono and stereo.
   {120, "opus", 48000, 960, 2, 64000},
 #endif
+#ifdef WEBRTC_CODEC_G729
+  // Mono
+  {18, "G729", 8000, 10, 1, 8000},
+#endif
   // Comfort noise for four different sampling frequencies.
   {13, "CN", 8000, 240, 1, 0},
   {98, "CN", 16000, 480, 1, 0},

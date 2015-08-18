@@ -19,10 +19,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "g729_interface.h"
-#include "g729_inst.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/g729_inst.h"
 
-#include "signal_processing_library.h"
+#include "webrtc/common_audio/signal_processing/include/signal_processing_library.h"
 
 
 size_t prm2bits_rtp(const int16_t prm[PRM_SIZE+1], uint8_t *bits) {

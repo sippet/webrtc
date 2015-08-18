@@ -131,6 +131,10 @@ class WEBRTC_DLLEXPORT VoECodec {
   // success, and -1 if failed.
   virtual int SetOpusDtx(int channel, bool enable_dtx) = 0;
 
+  // If send codec is G729 on a specified |channel|, set its DTX. Returns 0 if
+  // success, and -1 if failed.
+  virtual int SetG729Dtx(int channel, bool enable_dtx) = 0;
+
  protected:
   VoECodec() {}
   virtual ~VoECodec() {}

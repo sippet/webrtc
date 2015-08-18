@@ -25,5 +25,8 @@
     ['include_opus==1', {
       'includes': ['codecs/opus/opus.gypi',],
     }],
+    ['include_g729==1', {
+      'includes': ['codecs/g729/g729.gypi',],
+    }],
   ],
 }

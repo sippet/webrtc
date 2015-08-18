@@ -31,7 +31,7 @@
 #include "webrtc/modules/audio_coding/codecs/opus/interface/opus_interface.h"
 #endif
 #ifdef WEBRTC_CODEC_G729
-#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 #endif
 #include "webrtc/typedefs.h"
 
@@ -245,13 +245,19 @@ class AudioDecoderOpus : public AudioDecoder {
 class AudioDecoderG729 : public AudioDecoder {
  public:
   AudioDecoderG729();
-  virtual ~AudioDecoderG729();
-  virtual int Decode(const uint8_t* encoded, size_t encoded_len,
-                     int16_t* decoded, SpeechType* speech_type);
-  virtual bool HasDecodePlc() const { return true; }
-  virtual int DecodePlc(int num_frames, int16_t* decoded);
-  virtual int Init();
-  virtual int PacketDuration(const uint8_t* encoded, size_t encoded_len);
+  ~AudioDecoderG729() override;
+  bool HasDecodePlc() const { return true; }
+  int DecodePlc(int num_frames, int16_t* decoded) override;
+  int Init() override;
+  size_t Channels() const override;
+  int PacketDuration(const uint8_t* encoded, size_t encoded_len) const override;
+
+ protected:
+  int DecodeInternal(const uint8_t* encoded,
+                     size_t encoded_len,
+                     int sample_rate_hz,
+                     int16_t* decoded,
+                     SpeechType* speech_type) override;
 
  private:
   G729DecInst* dec_state_;

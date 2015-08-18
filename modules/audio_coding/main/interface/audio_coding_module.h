@@ -927,6 +927,27 @@ class AudioCodingModule {
   virtual int DisableOpusDtx() = 0;
 
   ///////////////////////////////////////////////////////////////////////////
+  // EnableG729Dtx()
+  // Enable the DTX, if current send codec is G729.
+  //
+  // Return value:
+  //   -1 if current send codec is not G729 or error occurred in enabling the
+  //      G729 DTX.
+  //    0 if G729 DTX is enabled successfully.
+  //
+  virtual int EnableG729Dtx() = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
+  // int DisableG729Dtx()
+  // If current send codec is G729, disables its internal DTX.
+  //
+  // Return value:
+  //   -1 if current send codec is not G729 or error occurred in disabling DTX.
+  //    0 if G729 DTX is disabled successfully.
+  //
+  virtual int DisableG729Dtx() = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
   //   statistics
   //
 

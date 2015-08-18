@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "webrtc/modules/audio_coding/codecs/g729/include/audio_encoder_g729.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/audio_encoder_g729.h"
 
 #include <limits>
 #include "webrtc/base/checks.h"
-#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 
 namespace webrtc {
 
@@ -32,10 +32,10 @@ AudioEncoderG729::~AudioEncoderG729() {
   CHECK_EQ(0, WebRtcG729_EncoderFree(inst_));
 }
 
-int AudioEncoderG729::sample_rate_hz() const {
+int AudioEncoderG729::SampleRateHz() const {
   return kSampleRateHz;
 }
-int AudioEncoderG729::num_channels() const {
+int AudioEncoderG729::NumChannels() const {
   return kNumChannels;
 }
 int AudioEncoderG729::Num10MsFramesInNextPacket() const {
@@ -46,11 +46,11 @@ int AudioEncoderG729::Max10MsFramesInAPacket() const {
   return num_10ms_frames_per_packet_;
 }
 
-bool AudioEncoderG729::EncodeInternal(uint32_t timestamp,
-                                      const int16_t* audio,
-                                      size_t max_encoded_bytes,
-                                      uint8_t* encoded,
-                                      EncodedInfo* info) {
+AudioEncoder::EncodedInfo AudioEncoderG729::EncodeInternal(
+    uint32_t timestamp,
+    const int16_t* audio,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   CHECK_GE(max_encoded_bytes, size_t(10));
   if (speech_buffer_.empty())
     first_timestamp_in_buffer_ = timestamp;
@@ -58,8 +58,7 @@ bool AudioEncoderG729::EncodeInternal(uint32_t timestamp,
                         audio + kSamplesPer10msFrame);
   if (speech_buffer_.size() < (static_cast<size_t>(num_10ms_frames_per_packet_) *
                                kSamplesPer10msFrame)) {
-    info->encoded_bytes = 0;
-    return true;
+    return EncodedInfo();
   }
   CHECK_EQ(speech_buffer_.size(),
            static_cast<size_t>(num_10ms_frames_per_packet_) *
@@ -70,11 +69,12 @@ bool AudioEncoderG729::EncodeInternal(uint32_t timestamp,
       encoded);
   speech_buffer_.clear();
   if (r < 0)
-    return false;
-  info->encoded_bytes = r;
-  info->encoded_timestamp = first_timestamp_in_buffer_;
-  info->payload_type = payload_type_;
-  return true;
+    return EncodedInfo();
+  EncodedInfo info;
+  info.encoded_bytes = r;
+  info.encoded_timestamp = first_timestamp_in_buffer_;
+  info.payload_type = payload_type_;
+  return info;
 }
 
 }  // namespace webrtc

@@ -1556,6 +1556,19 @@ int Channel::SetOpusDtx(bool enable_dtx) {
   return 0;
 }
 
+int Channel::SetG729Dtx(bool enable_dtx) {
+  WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId, _channelId),
+               "Channel::SetG729Dtx(%d)", enable_dtx);
+  int ret = enable_dtx ? audio_coding_->EnableG729Dtx()
+                       : audio_coding_->DisableG729Dtx();
+  if (ret != 0) {
+    _engineStatisticsPtr->SetLastError(
+        VE_AUDIO_CODING_MODULE_ERROR, kTraceError, "SetG729Dtx() failed");
+    return -1;
+  }
+  return 0;
+}
+
 int32_t Channel::RegisterExternalTransport(Transport& transport)
 {
     WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId, _channelId),

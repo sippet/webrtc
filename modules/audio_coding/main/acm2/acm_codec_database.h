@@ -67,6 +67,9 @@ class ACMCodecDB {
     // Mono and stereo
     , kOpus
 #endif
+#ifdef WEBRTC_CODEC_G729
+    , kG729
+#endif
     , kCNNB
     , kCNWB
     , kCNSWB
@@ -114,6 +117,9 @@ class ACMCodecDB {
 #ifndef WEBRTC_CODEC_OPUS
   // Mono and stereo
   enum {kOpus = -1};
+#endif
+#ifndef WEBRTC_CODEC_G729
+  enum {kG729 = -1};
 #endif
 #ifndef WEBRTC_CODEC_AVT
   enum {kAVT = -1};

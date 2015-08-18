@@ -907,6 +907,22 @@ int AudioCodingModuleImpl::DisableOpusDtx() {
   return codec_manager_.CurrentSpeechEncoder()->SetDtx(false) ? 0 : -1;
 }
 
+int AudioCodingModuleImpl::EnableG729Dtx() {
+  CriticalSectionScoped lock(acm_crit_sect_);
+  if (!HaveValidEncoder("EnableG729Dtx")) {
+    return -1;
+  }
+  return codec_manager_.CurrentSpeechEncoder()->SetDtx(true) ? 0 : -1;
+}
+
+int AudioCodingModuleImpl::DisableG729Dtx() {
+  CriticalSectionScoped lock(acm_crit_sect_);
+  if (!HaveValidEncoder("DisableG729Dtx")) {
+    return -1;
+  }
+  return codec_manager_.CurrentSpeechEncoder()->SetDtx(false) ? 0 : -1;
+}
+
 int AudioCodingModuleImpl::PlayoutTimestamp(uint32_t* timestamp) {
   return receiver_.GetPlayoutTimestamp(timestamp) ? 0 : -1;
 }
@@ -1244,6 +1260,13 @@ bool AudioCodingImpl::MapCodecTypeToParameters(int codec_type,
       *codec_name = "opus";
       *sample_rate_hz = 48000;
       *channels = 2;
+      break;
+#endif
+#ifdef WEBRTC_CODEC_G729
+    case acm2::ACMCodecDB::kG729:
+      *codec_name = "G729";
+      *sample_rate_hz = 8000;
+      *channels = 1;
       break;
 #endif
     case acm2::ACMCodecDB::kCNNB:

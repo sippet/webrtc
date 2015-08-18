@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
-#include "webrtc/modules/audio_coding/codecs/g729/include/g729_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 
 namespace webrtc {
 
@@ -25,20 +25,20 @@ class AudioEncoderG729 : public AudioEncoder {
     bool enable_dtx;
   };
 
-  AudioEncoderG729(const Config& config);
+  explicit AudioEncoderG729(const Config& config);
   ~AudioEncoderG729() override;
 
-  virtual int sample_rate_hz() const override;
-  virtual int num_channels() const override;
-  virtual int Num10MsFramesInNextPacket() const override;
-  virtual int Max10MsFramesInAPacket() const override;
-
- protected:
-  virtual bool EncodeInternal(uint32_t timestamp,
-                              const int16_t* audio,
-                              size_t max_encoded_bytes,
-                              uint8_t* encoded,
-                              EncodedInfo* info) override;
+  int SampleRateHz() const override;
+  int NumChannels() const override;
+  size_t MaxEncodedBytes() const override;
+  int RtpTimestampRateHz() const override;
+  int Num10MsFramesInNextPacket() const override;
+  int Max10MsFramesInAPacket() const override;
+  int GetTargetBitrate() const override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
   const int payload_type_;

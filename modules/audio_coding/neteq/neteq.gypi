@@ -24,7 +24,7 @@
         'neteq_defines': ['WEBRTC_CODEC_OPUS',],
       }],
       ['include_g729==1', {
-        'codecs': ['G729',],
+        'codecs': ['webrtc_g729',],
         'neteq_defines': ['WEBRTC_CODEC_G729',],
       }],
     ],

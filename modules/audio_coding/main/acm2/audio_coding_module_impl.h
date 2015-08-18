@@ -229,6 +229,10 @@ class AudioCodingModuleImpl : public AudioCodingModule {
 
   int DisableOpusDtx() override;
 
+  int EnableG729Dtx() override;
+
+  int DisableG729Dtx() override;
+
   int UnregisterReceiveCodec(uint8_t payload_type) override;
 
   int EnableNack(size_t max_nack_list_size) override;
