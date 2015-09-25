@@ -1217,6 +1217,10 @@ void P2PTransportChannel::OnCheckReceiving() {
 // We consider a connection pingable even if it's not connected because that's
 // how a TCP connection is kicked into reconnecting on the active side.
 bool P2PTransportChannel::IsPingable(Connection* conn) {
+  // Don't check if ICE is turned off
+  if (remote_ice_mode_ == ICEMODE_NONE)
+    return true;
+
   const Candidate& remote = conn->remote_candidate();
   // We should never get this far with an empty remote ufrag.
   ASSERT(!remote.username().empty());
