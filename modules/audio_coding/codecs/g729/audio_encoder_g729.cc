@@ -15,8 +15,19 @@ namespace {
 const int kSampleRateHz = 8000;
 const int kNumChannels = 1;
 const size_t kSamplesPer10msFrame = 80;
+const int kBitsPerSecond = 8000;
 
 } // empty namespace
+
+AudioEncoderG729::Config::Config()
+    : frame_size_ms(10),
+      payload_type(18),
+      enable_dtx(false) {
+}
+
+bool AudioEncoderG729::Config::IsOk() const {
+  return frame_size_ms % 10 == 0;
+}
 
 AudioEncoderG729::AudioEncoderG729(const Config& config)
     : payload_type_(config.payload_type),
@@ -35,15 +46,30 @@ AudioEncoderG729::~AudioEncoderG729() {
 int AudioEncoderG729::SampleRateHz() const {
   return kSampleRateHz;
 }
+
+int AudioEncoderG729::RtpTimestampRateHz() const {
+  // The RTP timestamp rate for G.729 is 8000 Hz.
+  return kSampleRateHz;
+}
+
 int AudioEncoderG729::NumChannels() const {
   return kNumChannels;
 }
+
+size_t AudioEncoderG729::MaxEncodedBytes() const {
+  return num_10ms_frames_per_packet_ * 10;
+}
+
 int AudioEncoderG729::Num10MsFramesInNextPacket() const {
   return num_10ms_frames_per_packet_;
 }
 
 int AudioEncoderG729::Max10MsFramesInAPacket() const {
   return num_10ms_frames_per_packet_;
+}
+
+int AudioEncoderG729::GetTargetBitrate() const {
+  return kBitsPerSecond;
 }
 
 AudioEncoder::EncodedInfo AudioEncoderG729::EncodeInternal(

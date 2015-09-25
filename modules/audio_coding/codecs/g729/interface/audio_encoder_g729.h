@@ -16,11 +16,9 @@ class AudioEncoderG729 : public AudioEncoder {
  public:
   struct Config {
    public:
-    explicit Config()
-        : frame_size_ms(10), num_channels(1),
-          payload_type(18), enable_dtx(false) {}
+    explicit Config();
+    bool IsOk() const;
     int frame_size_ms;
-    int num_channels;
     int payload_type;
     bool enable_dtx;
   };
