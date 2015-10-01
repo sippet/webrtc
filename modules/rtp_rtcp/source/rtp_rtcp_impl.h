@@ -126,10 +126,10 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
   // RTCP part.
 
   // Get RTCP status.
-  RtcpMode RTCP() const override;
+  RTCPMethod RTCP() const override;
 
   // Configure RTCP status i.e on/off.
-  void SetRTCPStatus(RtcpMode method) override;
+  void SetRTCPStatus(RTCPMethod method) override;
 
   // Set RTCP CName.
   int32_t SetCNAME(const char* c_name) override;

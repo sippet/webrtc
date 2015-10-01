@@ -39,9 +39,7 @@ class DirectTransport : public Transport {
   virtual void StopSending();
   virtual void SetReceiver(PacketReceiver* receiver);
 
-  bool SendRtp(const uint8_t* data,
-               size_t length,
-               const PacketOptions& options) override;
+  bool SendRtp(const uint8_t* data, size_t length) override;
   bool SendRtcp(const uint8_t* data, size_t length) override;
 
  private:

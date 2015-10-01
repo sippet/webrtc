@@ -139,7 +139,7 @@ RTCPSender::RTCPSender(
     Transport* outgoing_transport)
     : audio_(audio),
       clock_(clock),
-      method_(RtcpMode::kOff),
+      method_(kRtcpOff),
       transport_(outgoing_transport),
 
       critical_section_rtcp_sender_(
@@ -196,16 +196,16 @@ RTCPSender::RTCPSender(
 RTCPSender::~RTCPSender() {
 }
 
-RtcpMode RTCPSender::Status() const {
+RTCPMethod RTCPSender::Status() const {
   CriticalSectionScoped lock(critical_section_rtcp_sender_.get());
   return method_;
 }
 
-void RTCPSender::SetRTCPStatus(RtcpMode method) {
+void RTCPSender::SetRTCPStatus(RTCPMethod method) {
   CriticalSectionScoped lock(critical_section_rtcp_sender_.get());
   method_ = method;
 
-  if (method == RtcpMode::kOff)
+  if (method == kRtcpOff)
     return;
   next_time_to_send_rtcp_ =
       clock_->TimeInMilliseconds() +
@@ -223,7 +223,7 @@ int32_t RTCPSender::SetSendingStatus(const FeedbackState& feedback_state,
   {
     CriticalSectionScoped lock(critical_section_rtcp_sender_.get());
 
-    if (method_ != RtcpMode::kOff) {
+    if (method_ != kRtcpOff) {
       if (sending == false && sending_ == true) {
         // Trigger RTCP bye
         sendRTCPBye = true;
@@ -402,7 +402,7 @@ From RFC 3550
 
   CriticalSectionScoped lock(critical_section_rtcp_sender_.get());
 
-  if (method_ == RtcpMode::kOff)
+  if (method_ == kRtcpOff)
     return false;
 
   if (!audio_ && sendKeyframeBeforeRTP) {
@@ -933,7 +933,7 @@ int32_t RTCPSender::SendCompoundRTCP(
     uint64_t pictureID) {
   {
     CriticalSectionScoped lock(critical_section_rtcp_sender_.get());
-    if (method_ == RtcpMode::kOff) {
+    if (method_ == kRtcpOff) {
       LOG(LS_WARNING) << "Can't send rtcp if it is disabled.";
       return -1;
     }
@@ -977,8 +977,8 @@ int RTCPSender::PrepareRTCP(const FeedbackState& feedback_state,
     RTC_DCHECK(ConsumeFlag(kRtcpReport) == false);
   } else {
     generate_report =
-        (ConsumeFlag(kRtcpReport) && method_ == RtcpMode::kReducedSize) ||
-        method_ == RtcpMode::kCompound;
+        (ConsumeFlag(kRtcpReport) && method_ == kRtcpNonCompound) ||
+        method_ == kRtcpCompound;
     if (generate_report)
       SetFlag(sending_ ? kRtcpSr : kRtcpRr, true);
   }

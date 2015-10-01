@@ -378,9 +378,7 @@ public:
                               uint8_t volume) override;
 
     // From Transport (called by the RTP/RTCP module)
-    bool SendRtp(const uint8_t* data,
-                 size_t len,
-                 const PacketOptions& packet_options) override;
+    bool SendRtp(const uint8_t* data, size_t len) override;
     bool SendRtcp(const uint8_t* data, size_t len) override;
 
     // From MixerParticipant

@@ -214,9 +214,9 @@ Channel::OnRxVadDetected(int vadDecision)
     return 0;
 }
 
-bool Channel::SendRtp(const uint8_t* data,
-                      size_t len,
-                      const PacketOptions& options) {
+bool
+Channel::SendRtp(const uint8_t *data, size_t len)
+{
     WEBRTC_TRACE(kTraceStream, kTraceVoice, VoEId(_instanceId,_channelId),
                  "Channel::SendPacket(channel=%d, len=%" PRIuS ")", len);
 
@@ -233,7 +233,7 @@ bool Channel::SendRtp(const uint8_t* data,
     uint8_t* bufferToSendPtr = (uint8_t*)data;
     size_t bufferLength = len;
 
-    if (!_transportPtr->SendRtp(bufferToSendPtr, bufferLength, options)) {
+    if (!_transportPtr->SendRtp(bufferToSendPtr, bufferLength)) {
       std::string transport_name =
           _externalTransport ? "external transport" : "WebRtc sockets";
       WEBRTC_TRACE(kTraceError, kTraceVoice,
@@ -921,7 +921,7 @@ Channel::Init()
     // be transmitted since the Transport object will then be invalid.
     telephone_event_handler_->SetTelephoneEventForwardToDecoder(true);
     // RTCP is enabled by default.
-    _rtpRtcpModule->SetRTCPStatus(RtcpMode::kCompound);
+    _rtpRtcpModule->SetRTCPStatus(kRtcpCompound);
     // --- Register all permanent callbacks
     const bool fail =
         (audio_coding_->RegisterTransportCallback(this) == -1) ||
@@ -2783,14 +2783,14 @@ int Channel::SetReceiveAbsoluteSenderTimeStatus(bool enable, unsigned char id) {
 void Channel::SetRTCPStatus(bool enable) {
   WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId, _channelId),
                "Channel::SetRTCPStatus()");
-  _rtpRtcpModule->SetRTCPStatus(enable ? RtcpMode::kCompound : RtcpMode::kOff);
+  _rtpRtcpModule->SetRTCPStatus(enable ? kRtcpCompound : kRtcpOff);
 }
 
 int
 Channel::GetRTCPStatus(bool& enabled)
 {
-  RtcpMode method = _rtpRtcpModule->RTCP();
-  enabled = (method != RtcpMode::kOff);
+    RTCPMethod method = _rtpRtcpModule->RTCP();
+    enabled = (method != kRtcpOff);
     return 0;
 }
 
@@ -2936,8 +2936,9 @@ Channel::SendApplicationDefinedRTCPPacket(unsigned char subType,
             "SendApplicationDefinedRTCPPacket() invalid length value");
         return -1;
     }
-    RtcpMode status = _rtpRtcpModule->RTCP();
-    if (status == RtcpMode::kOff) {
+    RTCPMethod status = _rtpRtcpModule->RTCP();
+    if (status == kRtcpOff)
+    {
         _engineStatisticsPtr->SetLastError(
             VE_RTCP_ERROR, kTraceError,
             "SendApplicationDefinedRTCPPacket() RTCP is disabled");
@@ -2967,7 +2968,7 @@ Channel::GetRTPStatistics(
 {
     // The jitter statistics is updated for each received RTP packet and is
     // based on received packets.
-    if (_rtpRtcpModule->RTCP() == RtcpMode::kOff) {
+    if (_rtpRtcpModule->RTCP() == kRtcpOff) {
       // If RTCP is off, there is no timed thread in the RTCP module regularly
       // generating new stats, trigger the update manually here instead.
       StreamStatistician* statistician =
@@ -3038,9 +3039,8 @@ Channel::GetRTPStatistics(CallStatistics& stats)
     RtcpStatistics statistics;
     StreamStatistician* statistician =
         rtp_receive_statistics_->GetStatistician(rtp_receiver_->SSRC());
-    if (!statistician ||
-        !statistician->GetStatistics(
-            &statistics, _rtpRtcpModule->RTCP() == RtcpMode::kOff)) {
+    if (!statistician || !statistician->GetStatistics(
+        &statistics, _rtpRtcpModule->RTCP() == kRtcpOff)) {
       _engineStatisticsPtr->SetLastError(
           VE_CANNOT_RETRIEVE_RTP_STAT, kTraceWarning,
           "GetRTPStatistics() failed to read RTP statistics from the "
@@ -3911,8 +3911,8 @@ int32_t Channel::GetPlayoutFrequency() {
 }
 
 int64_t Channel::GetRTT(bool allow_associate_channel) const {
-  RtcpMode method = _rtpRtcpModule->RTCP();
-  if (method == RtcpMode::kOff) {
+  RTCPMethod method = _rtpRtcpModule->RTCP();
+  if (method == kRtcpOff) {
     return 0;
   }
   std::vector<RTCPReportBlock> report_blocks;

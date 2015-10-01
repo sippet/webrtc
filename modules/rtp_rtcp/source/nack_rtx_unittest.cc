@@ -96,9 +96,7 @@ class RtxLoopBackTransport : public webrtc::Transport {
     packet_loss_ = 0;
   }
 
-  bool SendRtp(const uint8_t* data,
-               size_t len,
-               const PacketOptions& options) override {
+  bool SendRtp(const uint8_t* data, size_t len) override {
     count_++;
     const unsigned char* ptr = static_cast<const unsigned  char*>(data);
     uint32_t ssrc = (ptr[8] << 24) + (ptr[9] << 16) + (ptr[10] << 8) + ptr[11];
@@ -199,7 +197,7 @@ class RtpRtcpRtxNackTest : public ::testing::Test {
         &rtp_payload_registry_));
 
     rtp_rtcp_module_->SetSSRC(kTestSsrc);
-    rtp_rtcp_module_->SetRTCPStatus(RtcpMode::kCompound);
+    rtp_rtcp_module_->SetRTCPStatus(kRtcpCompound);
     rtp_receiver_->SetNACKStatus(kNackRtcp);
     rtp_rtcp_module_->SetStorePacketsStatus(true, 600);
     EXPECT_EQ(0, rtp_rtcp_module_->SetSendingStatus(true));

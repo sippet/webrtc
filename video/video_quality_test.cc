@@ -138,9 +138,7 @@ class VideoAnalyzer : public PacketReceiver,
     input_->IncomingCapturedFrame(video_frame);
   }
 
-  bool SendRtp(const uint8_t* packet,
-               size_t length,
-               const PacketOptions& options) override {
+  bool SendRtp(const uint8_t* packet, size_t length) override {
     rtc::scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
     RTPHeader header;
     parser->Parse(packet, length, &header);
@@ -158,7 +156,7 @@ class VideoAnalyzer : public PacketReceiver,
           length - (header.headerLength + header.paddingLength);
     }
 
-    return transport_->SendRtp(packet, length, options);
+    return transport_->SendRtp(packet, length);
   }
 
   bool SendRtcp(const uint8_t* packet, size_t length) override {

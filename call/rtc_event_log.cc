@@ -111,15 +111,13 @@ namespace {
 // unnamed namespace. The intention is to make the compiler warn if anyone
 // adds unhandled new events/modes/etc.
 
-rtclog::VideoReceiveConfig_RtcpMode ConvertRtcpMode(RtcpMode rtcp_mode) {
+rtclog::VideoReceiveConfig_RtcpMode ConvertRtcpMode(
+    newapi::RtcpMode rtcp_mode) {
   switch (rtcp_mode) {
-    case RtcpMode::kCompound:
+    case newapi::kRtcpCompound:
       return rtclog::VideoReceiveConfig::RTCP_COMPOUND;
-    case RtcpMode::kReducedSize:
+    case newapi::kRtcpReducedSize:
       return rtclog::VideoReceiveConfig::RTCP_REDUCEDSIZE;
-    case RtcpMode::kOff:
-      RTC_NOTREACHED();
-      return rtclog::VideoReceiveConfig::RTCP_COMPOUND;
   }
   RTC_NOTREACHED();
   return rtclog::VideoReceiveConfig::RTCP_COMPOUND;

@@ -61,9 +61,7 @@ class SendTransport : public Transport,
     clock_ = clock;
     delay_ms_ = delay_ms;
   }
-  bool SendRtp(const uint8_t* data,
-               size_t len,
-               const PacketOptions& options) override {
+  bool SendRtp(const uint8_t* data, size_t len) override {
     RTPHeader header;
     rtc::scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
     EXPECT_TRUE(parser->Parse(static_cast<const uint8_t*>(data), len, &header));
@@ -105,7 +103,7 @@ class RtpRtcpModule : public RtcpPacketTypeCounterObserver {
     config.rtt_stats = &rtt_stats_;
 
     impl_.reset(new ModuleRtpRtcpImpl(config));
-    impl_->SetRTCPStatus(RtcpMode::kCompound);
+    impl_->SetRTCPStatus(kRtcpCompound);
 
     transport_.SimulateNetworkDelay(kOneWayNetworkDelayMs, clock);
   }

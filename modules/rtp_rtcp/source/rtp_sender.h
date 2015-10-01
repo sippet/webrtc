@@ -350,9 +350,7 @@ class RTPSender : public RTPSenderInterface {
   void BuildRtxPacket(uint8_t* buffer, size_t* length,
                       uint8_t* buffer_rtx);
 
-  bool SendPacketToNetwork(const uint8_t* packet,
-                           size_t size,
-                           const PacketOptions& options);
+  bool SendPacketToNetwork(const uint8_t *packet, size_t size);
 
   void UpdateDelayStatistics(int64_t capture_time_ms, int64_t now_ms);
 

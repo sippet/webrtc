@@ -126,9 +126,7 @@ class RtpRtcpObserver {
           on_rtcp_(on_rtcp) {}
 
   private:
-   bool SendRtp(const uint8_t* packet,
-                size_t length,
-                const PacketOptions& options) override {
+   bool SendRtp(const uint8_t* packet, size_t length) override {
       EXPECT_FALSE(RtpHeaderParser::IsRtcp(packet, length));
       Action action;
       {
@@ -140,7 +138,7 @@ class RtpRtcpObserver {
           // Drop packet silently.
           return true;
         case SEND_PACKET:
-          return test::DirectTransport::SendRtp(packet, length, options);
+          return test::DirectTransport::SendRtp(packet, length);
       }
       return true;  // Will never happen, makes compiler happy.
     }

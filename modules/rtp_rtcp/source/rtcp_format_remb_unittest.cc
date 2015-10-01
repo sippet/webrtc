@@ -32,9 +32,7 @@ class TestTransport : public Transport {
     rtcp_receiver_(rtcp_receiver) {
   }
 
-  bool SendRtp(const uint8_t* /*data*/,
-               size_t /*len*/,
-               const PacketOptions& options) override {
+  bool SendRtp(const uint8_t* /*data*/, size_t /*len*/) override {
     return false;
   }
   bool SendRtcp(const uint8_t* packet, size_t packetLength) override {
@@ -118,7 +116,7 @@ TEST_F(RtcpFormatRembTest, TestRembStatus) {
 
 TEST_F(RtcpFormatRembTest, TestNonCompund) {
   uint32_t SSRC = 456789;
-  rtcp_sender_->SetRTCPStatus(RtcpMode::kReducedSize);
+  rtcp_sender_->SetRTCPStatus(kRtcpNonCompound);
   rtcp_sender_->SetREMBData(1234, std::vector<uint32_t>(1, SSRC));
   RTCPSender::FeedbackState feedback_state =
       dummy_rtp_rtcp_impl_->GetFeedbackState();
@@ -127,7 +125,7 @@ TEST_F(RtcpFormatRembTest, TestNonCompund) {
 
 TEST_F(RtcpFormatRembTest, TestCompund) {
   uint32_t SSRCs[2] = {456789, 98765};
-  rtcp_sender_->SetRTCPStatus(RtcpMode::kCompound);
+  rtcp_sender_->SetRTCPStatus(kRtcpCompound);
   rtcp_sender_->SetREMBData(1234, std::vector<uint32_t>(SSRCs, SSRCs + 2));
   RTCPSender::FeedbackState feedback_state =
       dummy_rtp_rtcp_impl_->GetFeedbackState();

@@ -24,9 +24,7 @@ class LayerFilteringTransport : public test::DirectTransport {
                           uint8_t vp9_video_payload_type,
                           uint8_t tl_discard_threshold,
                           uint8_t sl_discard_threshold);
-  bool SendRtp(const uint8_t* data,
-               size_t length,
-               const PacketOptions& options) override;
+  bool SendRtp(const uint8_t* data, size_t length) override;
 
  private:
   // Used to distinguish between VP8 and VP9.

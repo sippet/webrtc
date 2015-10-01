@@ -12,9 +12,7 @@
 namespace webrtc {
 namespace test {
 
-bool NullTransport::SendRtp(const uint8_t* packet,
-                            size_t length,
-                            const PacketOptions& options) {
+bool NullTransport::SendRtp(const uint8_t* packet, size_t length) {
   return true;
 }
 

@@ -33,12 +33,10 @@ LayerFilteringTransport::LayerFilteringTransport(
       current_seq_num_(10000) {
 }  // TODO(ivica): random seq num?
 
-bool LayerFilteringTransport::SendRtp(const uint8_t* packet,
-                                      size_t length,
-                                      const PacketOptions& options) {
+bool LayerFilteringTransport::SendRtp(const uint8_t* packet, size_t length) {
   if (tl_discard_threshold_ == 0 && sl_discard_threshold_ == 0) {
     // Nothing to change, forward the packet immediately.
-    return test::DirectTransport::SendRtp(packet, length, options);
+    return test::DirectTransport::SendRtp(packet, length);
   }
 
   bool set_marker_bit = false;
@@ -95,7 +93,7 @@ bool LayerFilteringTransport::SendRtp(const uint8_t* packet,
 
   ++current_seq_num_;  // Increase only if packet not discarded.
 
-  return test::DirectTransport::SendRtp(temp_buffer, length, options);
+  return test::DirectTransport::SendRtp(temp_buffer, length);
 }
 
 }  // namespace test

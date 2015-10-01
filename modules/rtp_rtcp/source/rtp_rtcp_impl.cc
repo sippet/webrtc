@@ -474,15 +474,15 @@ int32_t ModuleRtpRtcpImpl::SetMaxTransferUnit(const uint16_t mtu) {
                                          packet_overhead_);
 }
 
-RtcpMode ModuleRtpRtcpImpl::RTCP() const {
-  if (rtcp_sender_.Status() != RtcpMode::kOff) {
+RTCPMethod ModuleRtpRtcpImpl::RTCP() const {
+  if (rtcp_sender_.Status() != kRtcpOff) {
     return rtcp_receiver_.Status();
   }
-  return RtcpMode::kOff;
+  return kRtcpOff;
 }
 
 // Configure RTCP status i.e on/off.
-void ModuleRtpRtcpImpl::SetRTCPStatus(const RtcpMode method) {
+void ModuleRtpRtcpImpl::SetRTCPStatus(const RTCPMethod method) {
   rtcp_sender_.SetRTCPStatus(method);
   rtcp_receiver_.SetRTCPStatus(method);
 }
@@ -861,7 +861,7 @@ void ModuleRtpRtcpImpl::SetRemoteSSRC(const uint32_t ssrc) {
       // Configured via API ignore.
       return;
     }
-    if (RtcpMode::kOff != rtcp_sender_.Status()) {
+    if (kRtcpOff != rtcp_sender_.Status()) {
       // Send RTCP bye on the current SSRC.
       SendRTCP(kRtcpBye);
     }

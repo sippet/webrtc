@@ -25,7 +25,6 @@
 // All properties should only be mutated from the main queue.
 @property(nonatomic, strong) id<ARDRoomServerClient> roomServerClient;
 @property(nonatomic, strong) id<ARDSignalingChannel> channel;
-@property(nonatomic, strong) id<ARDSignalingChannel> loopbackChannel;
 @property(nonatomic, strong) id<ARDTURNClient> turnClient;
 
 @property(nonatomic, strong) RTCPeerConnection *peerConnection;
@@ -42,8 +41,6 @@
 @property(nonatomic, strong) NSMutableArray *iceServers;
 @property(nonatomic, strong) NSURL *webSocketURL;
 @property(nonatomic, strong) NSURL *webSocketRestURL;
-@property(nonatomic, readonly) BOOL isLoopback;
-@property(nonatomic, readonly) BOOL isAudioOnly;
 
 @property(nonatomic, strong)
     RTCMediaConstraints *defaultPeerConnectionConstraints;

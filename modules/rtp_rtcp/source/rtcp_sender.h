@@ -78,8 +78,8 @@ public:
             Transport* outgoing_transport);
  virtual ~RTCPSender();
 
- RtcpMode Status() const;
- void SetRTCPStatus(RtcpMode method);
+ RTCPMethod Status() const;
+ void SetRTCPStatus(RTCPMethod method);
 
  bool Sending() const;
  int32_t SetSendingStatus(const FeedbackState& feedback_state,
@@ -225,7 +225,7 @@ private:
 private:
  const bool audio_;
  Clock* const clock_;
- RtcpMode method_ GUARDED_BY(critical_section_rtcp_sender_);
+ RTCPMethod method_ GUARDED_BY(critical_section_rtcp_sender_);
 
  Transport* const transport_;
 

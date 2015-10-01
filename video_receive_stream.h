@@ -24,6 +24,12 @@
 
 namespace webrtc {
 
+namespace newapi {
+// RTCP mode to use. Compound mode is described by RFC 4585 and reduced-size
+// RTCP mode is described by RFC 5506.
+enum RtcpMode { kRtcpCompound, kRtcpReducedSize };
+}  // namespace newapi
+
 class VideoDecoder;
 
 class VideoReceiveStream : public ReceiveStream {
@@ -101,7 +107,7 @@ class VideoReceiveStream : public ReceiveStream {
       uint32_t local_ssrc = 0;
 
       // See RtcpMode for description.
-      RtcpMode rtcp_mode = RtcpMode::kCompound;
+      newapi::RtcpMode rtcp_mode = newapi::kRtcpCompound;
 
       // Extended RTCP settings.
       struct RtcpXr {

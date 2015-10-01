@@ -68,6 +68,8 @@ class VideoReceiveStream : public webrtc::VideoReceiveStream,
   void SetSyncChannel(VoiceEngine* voice_engine, int audio_channel_id);
 
  private:
+  void SetRtcpMode(newapi::RtcpMode mode);
+
   TransportAdapter transport_adapter_;
   EncodedFrameCallbackAdapter encoded_frame_proxy_;
   const VideoReceiveStream::Config config_;

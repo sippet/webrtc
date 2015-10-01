@@ -31,9 +31,7 @@ void LoopBackTransport::DropEveryNthPacket(int n) {
   packet_loss_ = n;
 }
 
-bool LoopBackTransport::SendRtp(const uint8_t* data,
-                                size_t len,
-                                const PacketOptions& options) {
+bool LoopBackTransport::SendRtp(const uint8_t* data, size_t len) {
   count_++;
   if (packet_loss_ > 0) {
     if ((count_ % packet_loss_) == 0) {
@@ -141,9 +139,9 @@ TEST_F(RtpRtcpAPITest, SSRC) {
 }
 
 TEST_F(RtpRtcpAPITest, RTCP) {
-  EXPECT_EQ(RtcpMode::kOff, module_->RTCP());
-  module_->SetRTCPStatus(RtcpMode::kCompound);
-  EXPECT_EQ(RtcpMode::kCompound, module_->RTCP());
+  EXPECT_EQ(kRtcpOff, module_->RTCP());
+  module_->SetRTCPStatus(kRtcpCompound);
+  EXPECT_EQ(kRtcpCompound, module_->RTCP());
 
   EXPECT_EQ(0, module_->SetCNAME("john.doe@test.test"));
 
