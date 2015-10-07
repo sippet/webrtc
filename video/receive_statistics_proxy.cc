@@ -20,7 +20,8 @@ ReceiveStatisticsProxy::ReceiveStatisticsProxy(uint32_t ssrc, Clock* clock)
     : clock_(clock),
       // 1000ms window, scale 1000 for ms to s.
       decode_fps_estimator_(1000, 1000),
-      renders_fps_estimator_(1000, 1000) {
+      renders_fps_estimator_(1000, 1000),
+      render_fps_tracker_(100u, 10u) {
   stats_.ssrc = ssrc;
 }
 
@@ -35,7 +36,7 @@ void ReceiveStatisticsProxy::UpdateHistograms() {
         fraction_lost);
   }
 
-  int render_fps = static_cast<int>(render_fps_tracker_total_.units_second());
+  int render_fps = static_cast<int>(render_fps_tracker_.ComputeTotalRate());
   if (render_fps > 0)
     RTC_HISTOGRAM_COUNTS_100("WebRTC.Video.RenderFramesPerSecond", render_fps);
 
@@ -52,6 +53,10 @@ void ReceiveStatisticsProxy::UpdateHistograms() {
   int decode_ms = decode_time_counter_.Avg(kMinRequiredDecodeSamples);
   if (decode_ms != -1)
     RTC_HISTOGRAM_COUNTS_1000("WebRTC.Video.DecodeTimeInMs", decode_ms);
+
+  int delay_ms = delay_counter_.Avg(kMinRequiredDecodeSamples);
+  if (delay_ms != -1)
+    RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.OnewayDelayInMs", delay_ms);
 }
 
 VideoReceiveStream::Stats ReceiveStatisticsProxy::GetStats() const {
@@ -59,21 +64,26 @@ VideoReceiveStream::Stats ReceiveStatisticsProxy::GetStats() const {
   return stats_;
 }
 
-void ReceiveStatisticsProxy::IncomingRate(const int video_channel,
-                                          const unsigned int framerate,
-                                          const unsigned int bitrate_bps) {
+void ReceiveStatisticsProxy::OnIncomingPayloadType(int payload_type) {
+  rtc::CritScope lock(&crit_);
+  stats_.current_payload_type = payload_type;
+}
+
+void ReceiveStatisticsProxy::OnIncomingRate(unsigned int framerate,
+                                            unsigned int bitrate_bps) {
   rtc::CritScope lock(&crit_);
   stats_.network_frame_rate = framerate;
   stats_.total_bitrate_bps = bitrate_bps;
 }
 
-void ReceiveStatisticsProxy::DecoderTiming(int decode_ms,
-                                           int max_decode_ms,
-                                           int current_delay_ms,
-                                           int target_delay_ms,
-                                           int jitter_buffer_ms,
-                                           int min_playout_delay_ms,
-                                           int render_delay_ms) {
+void ReceiveStatisticsProxy::OnDecoderTiming(int decode_ms,
+                                             int max_decode_ms,
+                                             int current_delay_ms,
+                                             int target_delay_ms,
+                                             int jitter_buffer_ms,
+                                             int min_playout_delay_ms,
+                                             int render_delay_ms,
+                                             int64_t rtt_ms) {
   rtc::CritScope lock(&crit_);
   stats_.decode_ms = decode_ms;
   stats_.max_decode_ms = max_decode_ms;
@@ -83,6 +93,9 @@ void ReceiveStatisticsProxy::DecoderTiming(int decode_ms,
   stats_.min_playout_delay_ms = min_playout_delay_ms;
   stats_.render_delay_ms = render_delay_ms;
   decode_time_counter_.Add(decode_ms);
+  // Network delay (rtt/2) + target_delay_ms (jitter delay + decode time +
+  // render delay).
+  delay_counter_.Add(target_delay_ms + rtt_ms / 2);
 }
 
 void ReceiveStatisticsProxy::RtcpPacketTypesCounterUpdated(
@@ -98,7 +111,7 @@ void ReceiveStatisticsProxy::StatisticsUpdated(
     const webrtc::RtcpStatistics& statistics,
     uint32_t ssrc) {
   rtc::CritScope lock(&crit_);
-  // TODO(pbos): Handle both local and remote ssrcs here and DCHECK that we
+  // TODO(pbos): Handle both local and remote ssrcs here and RTC_DCHECK that we
   // receive stats from one of them.
   if (stats_.ssrc != ssrc)
     return;
@@ -108,7 +121,7 @@ void ReceiveStatisticsProxy::StatisticsUpdated(
 
 void ReceiveStatisticsProxy::CNameChanged(const char* cname, uint32_t ssrc) {
   rtc::CritScope lock(&crit_);
-  // TODO(pbos): Handle both local and remote ssrcs here and DCHECK that we
+  // TODO(pbos): Handle both local and remote ssrcs here and RTC_DCHECK that we
   // receive stats from one of them.
   if (stats_.ssrc != ssrc)
     return;
@@ -140,7 +153,7 @@ void ReceiveStatisticsProxy::OnRenderedFrame(int width, int height) {
   stats_.render_frame_rate = renders_fps_estimator_.Rate(now);
   render_width_counter_.Add(width);
   render_height_counter_.Add(height);
-  render_fps_tracker_total_.Update(1);
+  render_fps_tracker_.AddSamples(1);
 }
 
 void ReceiveStatisticsProxy::OnReceiveRatesUpdated(uint32_t bitRate,

@@ -55,15 +55,16 @@ class VideoCaptureInput : public webrtc::VideoCaptureInput {
                     VideoCaptureCallback* frame_callback,
                     VideoRenderer* local_renderer,
                     SendStatisticsProxy* send_stats_proxy,
-                    CpuOveruseObserver* overuse_observer);
+                    CpuOveruseObserver* overuse_observer,
+                    EncodingTimeObserver* encoding_time_observer);
   ~VideoCaptureInput();
 
   void IncomingCapturedFrame(const VideoFrame& video_frame) override;
 
  private:
   // Thread functions for deliver captured frames to receivers.
-  static bool CaptureThreadFunction(void* obj);
-  bool CaptureProcess();
+  static bool EncoderThreadFunction(void* obj);
+  bool EncoderProcess();
 
   void DeliverI420Frame(VideoFrame* video_frame);
 
@@ -78,11 +79,8 @@ class VideoCaptureInput : public webrtc::VideoCaptureInput {
   rtc::scoped_ptr<CriticalSectionWrapper> incoming_frame_cs_;
   VideoFrame incoming_frame_;
 
-  // Capture thread.
-  rtc::scoped_ptr<ThreadWrapper> capture_thread_;
-  // TODO(pbos): scoped_ptr
-  EventWrapper& capture_event_;
-  EventWrapper& deliver_event_;
+  rtc::scoped_ptr<ThreadWrapper> encoder_thread_;
+  rtc::scoped_ptr<EventWrapper> capture_event_;
 
   volatile int stop_;
 
@@ -93,6 +91,7 @@ class VideoCaptureInput : public webrtc::VideoCaptureInput {
   const int64_t delta_ntp_internal_ms_;
 
   rtc::scoped_ptr<OveruseFrameDetector> overuse_detector_;
+  EncodingTimeObserver* const encoding_time_observer_;
 };
 
 }  // namespace internal

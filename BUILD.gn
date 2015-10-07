@@ -23,9 +23,9 @@ config("common_inherited_config") {
   if (build_with_chromium) {
     defines = [ "WEBRTC_CHROMIUM_BUILD" ]
     include_dirs = [
-      # overrides must be included first as that is the mechanism for
+      # The overrides must be included first as that is the mechanism for
       # selecting the override headers in Chromium.
-      "overrides",
+      "../webrtc_overrides",
 
       # Allow includes to be prefixed with webrtc/ in case it is not an
       # immediate subdirectory of the top-level.
@@ -153,10 +153,7 @@ config("common_config") {
     }
   }
 
-  # TODO(kjellander): Handle warnings on Windows where WebRTC differ from the
-  # default warnings set in build/config/compiler/BUILD.gn.
-
-  if (is_android && is_clang) {
+  if (is_android && !is_clang) {
     # The Android NDK doesn"t provide optimized versions of these
     # functions. Ensure they are disabled for all compilers.
     cflags += [
@@ -181,8 +178,10 @@ source_set("webrtc") {
   public_configs = [ ":common_inherited_config" ]
 
   deps = [
+    "audio",
     ":webrtc_common",
     "base:rtc_base",
+    "call",
     "common_audio",
     "common_video",
     "modules/audio_coding",
@@ -250,16 +249,16 @@ source_set("gtest_prod") {
 if (rtc_enable_protobuf) {
   proto_library("rtc_event_log_proto") {
     sources = [
-      "video/rtc_event_log.proto",
+      "call/rtc_event_log.proto",
     ]
-    proto_out_dir = "webrtc/video"
+    proto_out_dir = "webrtc/call"
   }
 }
 
 source_set("rtc_event_log") {
   sources = [
-    "video/rtc_event_log.cc",
-    "video/rtc_event_log.h",
+    "call/rtc_event_log.cc",
+    "call/rtc_event_log.h",
   ]
 
   defines = []
@@ -274,7 +273,7 @@ source_set("rtc_event_log") {
     defines += [ "ENABLE_RTC_EVENT_LOG" ]
     deps += [ ":rtc_event_log_proto" ]
   }
-  if (is_clang) {
+  if (is_clang && !is_nacl) {
     # Suppress warnings from Chrome's Clang plugins.
     # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
     configs -= [ "//build/config/clang:find_bad_constructs" ]

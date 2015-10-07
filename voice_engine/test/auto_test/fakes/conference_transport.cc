@@ -108,15 +108,16 @@ ConferenceTransport::~ConferenceTransport() {
   EXPECT_TRUE(webrtc::VoiceEngine::Delete(local_voe_));
 }
 
-int ConferenceTransport::SendPacket(int channel, const void* data, size_t len) {
-  StorePacket(Packet::Rtp, channel, data, len);
-  return static_cast<int>(len);
+bool ConferenceTransport::SendRtp(const uint8_t* data,
+                                  size_t len,
+                                  const webrtc::PacketOptions& options) {
+  StorePacket(Packet::Rtp, data, len);
+  return true;
 }
 
-int ConferenceTransport::SendRTCPPacket(int channel, const void* data,
-                                        size_t len) {
-  StorePacket(Packet::Rtcp, channel, data, len);
-  return static_cast<int>(len);
+bool ConferenceTransport::SendRtcp(const uint8_t* data, size_t len) {
+  StorePacket(Packet::Rtcp, data, len);
+  return true;
 }
 
 int ConferenceTransport::GetReceiverChannelForSsrc(unsigned int sender_ssrc)
@@ -129,11 +130,12 @@ int ConferenceTransport::GetReceiverChannelForSsrc(unsigned int sender_ssrc)
   return -1;
 }
 
-void ConferenceTransport::StorePacket(Packet::Type type, int channel,
-                                      const void* data, size_t len) {
+void ConferenceTransport::StorePacket(Packet::Type type,
+                                      const void* data,
+                                      size_t len) {
   {
     webrtc::CriticalSectionScoped lock(pq_crit_.get());
-    packet_queue_.push_back(Packet(type, channel, data, len, rtc::Time()));
+    packet_queue_.push_back(Packet(type, data, len, rtc::Time()));
   }
   packet_event_->Set();
 }
@@ -205,8 +207,8 @@ bool ConferenceTransport::DispatchPackets() {
       packet_queue_.pop_front();
     }
 
-    int32 elapsed_time_ms = rtc::TimeSince(packet.send_time_ms_);
-    int32 sleep_ms = rtt_ms_ / 2 - elapsed_time_ms;
+    int32_t elapsed_time_ms = rtc::TimeSince(packet.send_time_ms_);
+    int32_t sleep_ms = rtt_ms_ / 2 - elapsed_time_ms;
     if (sleep_ms > 0) {
       // Every packet should be delayed by half of RTT.
       webrtc::SleepMs(sleep_ms);

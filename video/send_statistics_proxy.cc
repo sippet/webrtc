@@ -27,6 +27,8 @@ SendStatisticsProxy::SendStatisticsProxy(Clock* clock,
                                          const VideoSendStream::Config& config)
     : clock_(clock),
       config_(config),
+      input_frame_rate_tracker_(100u, 10u),
+      sent_frame_rate_tracker_(100u, 10u),
       last_sent_frame_timestamp_(0),
       max_sent_width_per_timestamp_(0),
       max_sent_height_per_timestamp_(0) {
@@ -38,11 +40,11 @@ SendStatisticsProxy::~SendStatisticsProxy() {
 
 void SendStatisticsProxy::UpdateHistograms() {
   int input_fps =
-      static_cast<int>(input_frame_rate_tracker_total_.units_second());
+      static_cast<int>(input_frame_rate_tracker_.ComputeTotalRate());
   if (input_fps > 0)
     RTC_HISTOGRAM_COUNTS_100("WebRTC.Video.InputFramesPerSecond", input_fps);
   int sent_fps =
-      static_cast<int>(sent_frame_rate_tracker_total_.units_second());
+      static_cast<int>(sent_frame_rate_tracker_.ComputeTotalRate());
   if (sent_fps > 0)
     RTC_HISTOGRAM_COUNTS_100("WebRTC.Video.SentFramesPerSecond", sent_fps);
 
@@ -62,11 +64,15 @@ void SendStatisticsProxy::UpdateHistograms() {
   int encode_ms = encode_time_counter_.Avg(kMinRequiredSamples);
   if (encode_ms != -1)
     RTC_HISTOGRAM_COUNTS_1000("WebRTC.Video.EncodeTimeInMs", encode_ms);
+
+  int key_frames_permille = key_frame_counter_.Permille(kMinRequiredSamples);
+  if (key_frames_permille != -1) {
+    RTC_HISTOGRAM_COUNTS_1000("WebRTC.Video.KeyFramesSentInPermille",
+        key_frames_permille);
+  }
 }
 
-void SendStatisticsProxy::OutgoingRate(const int video_channel,
-                                       const unsigned int framerate,
-                                       const unsigned int bitrate) {
+void SendStatisticsProxy::OnOutgoingRate(uint32_t framerate, uint32_t bitrate) {
   rtc::CritScope lock(&crit_);
   stats_.encode_frame_rate = framerate;
   stats_.media_bitrate_bps = bitrate;
@@ -80,7 +86,7 @@ void SendStatisticsProxy::CpuOveruseMetricsUpdated(
   stats_.encode_usage_percent = metrics.encode_usage_percent;
 }
 
-void SendStatisticsProxy::SuspendChange(int video_channel, bool is_suspended) {
+void SendStatisticsProxy::OnSuspendChange(bool is_suspended) {
   rtc::CritScope lock(&crit_);
   stats_.suspended = is_suspended;
 }
@@ -89,7 +95,7 @@ VideoSendStream::Stats SendStatisticsProxy::GetStats() {
   rtc::CritScope lock(&crit_);
   PurgeOldStats();
   stats_.input_frame_rate =
-      static_cast<int>(input_frame_rate_tracker_.units_second());
+      static_cast<int>(input_frame_rate_tracker_.ComputeRate());
   return stats_;
 }
 
@@ -162,12 +168,14 @@ void SendStatisticsProxy::OnSendEncodedImage(
   stats->height = encoded_image._encodedHeight;
   update_times_[ssrc].resolution_update_ms = clock_->TimeInMilliseconds();
 
+  key_frame_counter_.Add(encoded_image._frameType == kKeyFrame);
+
   // TODO(asapersson): This is incorrect if simulcast layers are encoded on
   // different threads and there is no guarantee that one frame of all layers
   // are encoded before the next start.
   if (last_sent_frame_timestamp_ > 0 &&
       encoded_image._timeStamp != last_sent_frame_timestamp_) {
-    sent_frame_rate_tracker_total_.Update(1);
+    sent_frame_rate_tracker_.AddSamples(1);
     sent_width_counter_.Add(max_sent_width_per_timestamp_);
     sent_height_counter_.Add(max_sent_height_per_timestamp_);
     max_sent_width_per_timestamp_ = 0;
@@ -184,8 +192,7 @@ void SendStatisticsProxy::OnSendEncodedImage(
 
 void SendStatisticsProxy::OnIncomingFrame(int width, int height) {
   rtc::CritScope lock(&crit_);
-  input_frame_rate_tracker_.Update(1);
-  input_frame_rate_tracker_total_.Update(1);
+  input_frame_rate_tracker_.AddSamples(1);
   input_width_counter_.Add(width);
   input_height_counter_.Add(height);
 }
@@ -224,8 +231,8 @@ void SendStatisticsProxy::DataCountersUpdated(
     uint32_t ssrc) {
   rtc::CritScope lock(&crit_);
   VideoSendStream::StreamStats* stats = GetStatsEntry(ssrc);
-  DCHECK(stats != nullptr) << "DataCountersUpdated reported for unknown ssrc: "
-                           << ssrc;
+  RTC_DCHECK(stats != nullptr)
+      << "DataCountersUpdated reported for unknown ssrc: " << ssrc;
 
   stats->rtp_stats = counters;
 }
@@ -272,6 +279,29 @@ int SendStatisticsProxy::SampleCounter::Avg(int min_required_samples) const {
   if (num_samples < min_required_samples || num_samples == 0)
     return -1;
   return sum / num_samples;
+}
+
+void SendStatisticsProxy::BoolSampleCounter::Add(bool sample) {
+  if (sample)
+    ++sum;
+  ++num_samples;
+}
+
+int SendStatisticsProxy::BoolSampleCounter::Percent(
+    int min_required_samples) const {
+  return Fraction(min_required_samples, 100.0f);
+}
+
+int SendStatisticsProxy::BoolSampleCounter::Permille(
+    int min_required_samples) const {
+  return Fraction(min_required_samples, 1000.0f);
+}
+
+int SendStatisticsProxy::BoolSampleCounter::Fraction(
+    int min_required_samples, float multiplier) const {
+  if (num_samples < min_required_samples || num_samples == 0)
+    return -1;
+  return static_cast<int>((sum * multiplier / num_samples) + 0.5f);
 }
 
 }  // namespace webrtc

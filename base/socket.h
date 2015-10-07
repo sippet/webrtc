@@ -26,6 +26,7 @@
 #endif
 
 #include "webrtc/base/basictypes.h"
+#include "webrtc/base/constructormagic.h"
 #include "webrtc/base/socketaddress.h"
 
 // Rather than converting errors into a private namespace,
@@ -109,7 +110,7 @@
 #define EREMOTE WSAEREMOTE
 #undef EACCES
 #define SOCKET_EACCES WSAEACCES
-#endif  // WEBRTC_WIN 
+#endif  // WEBRTC_WIN
 
 #if defined(WEBRTC_POSIX)
 #define INVALID_SOCKET (-1)
@@ -157,10 +158,10 @@ class Socket {
   };
   virtual ConnState GetState() const = 0;
 
-  // Fills in the given uint16 with the current estimate of the MTU along the
+  // Fills in the given uint16_t with the current estimate of the MTU along the
   // path to the address to which this socket is connected. NOTE: This method
   // can block for up to 10 seconds on Windows.
-  virtual int EstimateMTU(uint16* mtu) = 0;
+  virtual int EstimateMTU(uint16_t* mtu) = 0;
 
   enum Option {
     OPT_DONTFRAGMENT,
@@ -180,7 +181,7 @@ class Socket {
   Socket() {}
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(Socket);
+  RTC_DISALLOW_COPY_AND_ASSIGN(Socket);
 };
 
 }  // namespace rtc

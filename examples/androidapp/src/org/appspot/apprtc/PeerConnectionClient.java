@@ -16,6 +16,7 @@ import android.util.Log;
 
 import org.appspot.apprtc.AppRTCClient.SignalingParameters;
 import org.appspot.apprtc.util.LooperExecutor;
+import org.webrtc.CameraEnumerationAndroid;
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
 import org.webrtc.Logging;
@@ -215,7 +216,6 @@ public class PeerConnectionClient {
 
   public void createPeerConnectionFactory(
       final Context context,
-      final EGLContext renderEGLContext,
       final PeerConnectionParameters peerConnectionParameters,
       final PeerConnectionEvents events) {
     this.peerConnectionParameters = peerConnectionParameters;
@@ -240,12 +240,13 @@ public class PeerConnectionClient {
     executor.execute(new Runnable() {
       @Override
       public void run() {
-        createPeerConnectionFactoryInternal(context, renderEGLContext);
+        createPeerConnectionFactoryInternal(context);
       }
     });
   }
 
   public void createPeerConnection(
+      final EGLContext renderEGLContext,
       final VideoRenderer.Callbacks localRender,
       final VideoRenderer.Callbacks remoteRender,
       final SignalingParameters signalingParameters) {
@@ -260,7 +261,7 @@ public class PeerConnectionClient {
       @Override
       public void run() {
         createMediaConstraintsInternal();
-        createPeerConnectionInternal();
+        createPeerConnectionInternal(renderEGLContext);
       }
     });
   }
@@ -278,11 +279,9 @@ public class PeerConnectionClient {
     return videoCallEnabled;
   }
 
-  private void createPeerConnectionFactoryInternal(
-      Context context, EGLContext renderEGLContext) {
-    Log.d(TAG, "Create peer connection factory with EGLContext "
-        + renderEGLContext + ". Use video: "
-        + peerConnectionParameters.videoCallEnabled);
+  private void createPeerConnectionFactoryInternal(Context context) {
+    Log.d(TAG, "Create peer connection factory. Use video: " +
+        peerConnectionParameters.videoCallEnabled);
     isError = false;
     // Check if VP9 is used by default.
     if (videoCallEnabled && peerConnectionParameters.videoCodec != null
@@ -303,9 +302,8 @@ public class PeerConnectionClient {
         && peerConnectionParameters.audioCodec.equals(AUDIO_CODEC_ISAC)) {
       preferIsac = true;
     }
-    if (!PeerConnectionFactory.initializeAndroidGlobals(
-        context, true, true,
-        peerConnectionParameters.videoCodecHwAcceleration, renderEGLContext)) {
+    if (!PeerConnectionFactory.initializeAndroidGlobals(context, true, true,
+        peerConnectionParameters.videoCodecHwAcceleration)) {
       events.onPeerConnectionError("Failed to initializeAndroidGlobals");
     }
     factory = new PeerConnectionFactory();
@@ -329,7 +327,7 @@ public class PeerConnectionClient {
     }
 
     // Check if there is a camera on device and disable video call if not.
-    numberOfCameras = VideoCapturerAndroid.getDeviceCount();
+    numberOfCameras = CameraEnumerationAndroid.getDeviceCount();
     if (numberOfCameras == 0) {
       Log.w(TAG, "No camera on device. Switch to audio only call.");
       videoCallEnabled = false;
@@ -401,17 +399,23 @@ public class PeerConnectionClient {
     }
   }
 
-  private void createPeerConnectionInternal() {
+  private void createPeerConnectionInternal(EGLContext renderEGLContext) {
     if (factory == null || isError) {
       Log.e(TAG, "Peerconnection factory is not created");
       return;
     }
-    Log.d(TAG, "Create peer connection");
+    Log.d(TAG, "Create peer connection.");
+
     Log.d(TAG, "PCConstraints: " + pcConstraints.toString());
     if (videoConstraints != null) {
       Log.d(TAG, "VideoConstraints: " + videoConstraints.toString());
     }
     queuedRemoteCandidates = new LinkedList<IceCandidate>();
+
+    if (videoCallEnabled) {
+      Log.d(TAG, "EGLContext: " + renderEGLContext);
+      factory.setVideoHwAccelerationOptions(renderEGLContext);
+    }
 
     PeerConnection.RTCConfiguration rtcConfig =
         new PeerConnection.RTCConfiguration(signalingParameters.iceServers);
@@ -420,6 +424,8 @@ public class PeerConnectionClient {
     rtcConfig.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED;
     rtcConfig.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE;
     rtcConfig.rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE;
+    // Use ECDSA encryption.
+    rtcConfig.keyType = PeerConnection.KeyType.ECDSA;
 
     peerConnection = factory.createPeerConnection(
         rtcConfig, pcConstraints, pcObserver);
@@ -434,9 +440,9 @@ public class PeerConnectionClient {
 
     mediaStream = factory.createLocalMediaStream("ARDAMS");
     if (videoCallEnabled) {
-      String cameraDeviceName = VideoCapturerAndroid.getDeviceName(0);
+      String cameraDeviceName = CameraEnumerationAndroid.getDeviceName(0);
       String frontCameraDeviceName =
-          VideoCapturerAndroid.getNameOfFrontFacingDevice();
+          CameraEnumerationAndroid.getNameOfFrontFacingDevice();
       if (numberOfCameras > 1 && frontCameraDeviceName != null) {
         cameraDeviceName = frontCameraDeviceName;
       }
@@ -838,6 +844,24 @@ public class PeerConnectionClient {
     });
   }
 
+  public void changeCaptureFormat(final int width, final int height, final int framerate) {
+    executor.execute(new Runnable() {
+      @Override
+      public void run() {
+        changeCaptureFormatInternal(width, height, framerate);
+      }
+    });
+  }
+
+  private void changeCaptureFormatInternal(int width, int height, int framerate) {
+    if (!videoCallEnabled || isError || videoCapturer == null) {
+      Log.e(TAG, "Failed to change capture format. Video: " + videoCallEnabled + ". Error : "
+          + isError);
+      return;
+    }
+    videoCapturer.onOutputFormatRequest(width, height, framerate);
+  }
+
   // Implementation detail: observe ICE & stream changes and react accordingly.
   private class PCObserver implements PeerConnection.Observer {
     @Override
@@ -911,11 +935,7 @@ public class PeerConnectionClient {
       executor.execute(new Runnable() {
         @Override
         public void run() {
-          if (peerConnection == null || isError) {
-            return;
-          }
           remoteVideoTrack = null;
-          stream.videoTracks.get(0).dispose();
         }
       });
     }

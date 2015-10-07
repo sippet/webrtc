@@ -62,8 +62,8 @@ namespace {
 // limit of IPv6 networks but could be changed by set_max_ipv6_networks().
 const int kMaxIPv6Networks = 5;
 
-const uint32 kUpdateNetworksMessage = 1;
-const uint32 kSignalNetworksMessage = 2;
+const uint32_t kUpdateNetworksMessage = 1;
+const uint32_t kSignalNetworksMessage = 2;
 
 // Fetch list of networks every two seconds.
 const int kNetworksUpdateIntervalMs = 2000;
@@ -123,7 +123,7 @@ std::string AdapterTypeToString(AdapterType type) {
     case ADAPTER_TYPE_LOOPBACK:
       return "Loopback";
     default:
-      DCHECK(false) << "Invalid type " << type;
+      RTC_DCHECK(false) << "Invalid type " << type;
       return std::string();
   }
 }
@@ -163,14 +163,26 @@ NetworkManager::NetworkManager() {
 NetworkManager::~NetworkManager() {
 }
 
+NetworkManager::EnumerationPermission NetworkManager::enumeration_permission()
+    const {
+  return ENUMERATION_ALLOWED;
+}
+
 NetworkManagerBase::NetworkManagerBase()
-    : max_ipv6_networks_(kMaxIPv6Networks), ipv6_enabled_(true) {
+    : enumeration_permission_(NetworkManager::ENUMERATION_ALLOWED),
+      max_ipv6_networks_(kMaxIPv6Networks),
+      ipv6_enabled_(true) {
 }
 
 NetworkManagerBase::~NetworkManagerBase() {
   for (const auto& kv : networks_map_) {
     delete kv.second;
   }
+}
+
+NetworkManager::EnumerationPermission
+NetworkManagerBase::enumeration_permission() const {
+  return enumeration_permission_;
 }
 
 void NetworkManagerBase::GetAnyAddressNetworks(NetworkList* networks) {

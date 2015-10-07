@@ -271,6 +271,8 @@ void PacedVideoSender::QueuePackets(Packets* batch,
   }
   Packets to_transfer;
   to_transfer.splice(to_transfer.begin(), queue_, queue_.begin(), it);
+  for (Packet* packet : to_transfer)
+    packet->set_paced(true);
   bwe_->OnPacketsSent(to_transfer);
   batch->merge(to_transfer, DereferencingComparator<Packet>);
 }
@@ -400,7 +402,7 @@ void TcpSender::SendPackets(Packets* in_out) {
 
 void TcpSender::UpdateCongestionControl(const FeedbackPacket* fb) {
   const TcpFeedback* tcp_fb = static_cast<const TcpFeedback*>(fb);
-  DCHECK(!tcp_fb->acked_packets().empty());
+  RTC_DCHECK(!tcp_fb->acked_packets().empty());
   ack_received_ = true;
 
   uint16_t expected = tcp_fb->acked_packets().back() - last_acked_seq_num_;
