@@ -21,6 +21,7 @@
 #include "webrtc/modules/audio_coding/codecs/opus/interface/audio_encoder_opus.h"
 #include "webrtc/modules/audio_coding/codecs/pcm16b/include/audio_encoder_pcm16b.h"
 #include "webrtc/modules/audio_coding/codecs/red/audio_encoder_copy_red.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/audio_encoder_g729.h"
 
 namespace webrtc {
 namespace acm2 {
@@ -73,6 +74,14 @@ bool IsG722(const CodecInst& codec) {
 #endif
       false;
 }
+
+bool IsG729(const CodecInst& codec) {
+  return
+#ifdef WEBRTC_CODEC_G729
+      !STR_CASE_CMP(codec.plname, "g729") ||
+#endif
+      false;
+}
 }  // namespace
 
 CodecOwner::CodecOwner()
@@ -120,6 +129,8 @@ void CreateSpeechEncoder(
     speech_encoder->reset(new AudioEncoderMutableIlbc(speech_inst));
   } else if (IsG722(speech_inst)) {
     speech_encoder->reset(new AudioEncoderMutableG722(speech_inst));
+  } else if (IsG729(speech_inst)) {
+    speech_encoder->reset(new AudioEncoderMutableG729(speech_inst));
   } else {
     FATAL();
   }

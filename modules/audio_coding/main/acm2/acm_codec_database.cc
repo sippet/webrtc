@@ -72,7 +72,7 @@ const CodecInst ACMCodecDB::database_[] = {
 #endif
 #ifdef WEBRTC_CODEC_G729
   // Mono
-  {18, "G729", 8000, 10, 1, 8000},
+  {18, "G729", 8000, 80, 1, 8000},
 #endif
   // Comfort noise for four different sampling frequencies.
   {13, "CN", 8000, 240, 1, 0},
@@ -134,6 +134,10 @@ const ACMCodecDB::CodecSettings ACMCodecDB::codec_settings_[] = {
     // but it doesn't help us to use them.
     // Mono and stereo.
     {4, {480, 960, 1920, 2880}, 0, 2, false},
+#endif
+#ifdef WEBRTC_CODEC_G729
+    // G.729 accepts multiples of 10ms. Mono only.
+    {6, {80, 160, 240, 320, 400, 480}, 0, 1, false},
 #endif
     // Comfort noise for three different sampling frequencies.
     {1, {240}, 240, 1, false},

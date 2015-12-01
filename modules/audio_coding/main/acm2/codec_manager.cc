@@ -145,9 +145,17 @@ bool IsG722(const CodecInst& codec) {
       false;
 }
 
+bool IsG729(const CodecInst& codec) {
+  return
+#ifdef WEBRTC_CODEC_G729
+      !STR_CASE_CMP(codec.plname, "g729") ||
+#endif
+      false;
+}
+
 bool CodecSupported(const CodecInst& codec) {
   return IsOpus(codec) || IsPcmU(codec) || IsPcmA(codec) || IsPcm16B(codec) ||
-         IsIlbc(codec) || IsG722(codec) || IsIsac(codec);
+         IsIlbc(codec) || IsG722(codec) || IsIsac(codec) || IsG729(codec);
 }
 
 const CodecInst kEmptyCodecInst = {-1, "noCodecRegistered", 0, 0, 0, 0};

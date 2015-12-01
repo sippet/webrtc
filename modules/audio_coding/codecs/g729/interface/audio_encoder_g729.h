@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
+#include "webrtc/modules/audio_coding/codecs/audio_encoder_mutable_impl.h"
 #include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 
 namespace webrtc {
@@ -20,7 +21,7 @@ class AudioEncoderG729 : public AudioEncoder {
     bool IsOk() const;
     int frame_size_ms;
     int payload_type;
-    bool enable_dtx;
+    bool dtx_enabled;
   };
 
   explicit AudioEncoderG729(const Config& config);
@@ -33,6 +34,9 @@ class AudioEncoderG729 : public AudioEncoder {
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
   int GetTargetBitrate() const override;
+
+  bool dtx_enabled() const { return dtx_enabled_; }
+
   EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
                              const int16_t* audio,
                              size_t max_encoded_bytes,
@@ -40,10 +44,29 @@ class AudioEncoderG729 : public AudioEncoder {
 
  private:
   const int payload_type_;
+  const bool dtx_enabled_;
   const int num_10ms_frames_per_packet_;
   std::vector<int16_t> speech_buffer_;
   uint32_t first_timestamp_in_buffer_;
   G729EncInst* inst_;
+};
+
+struct CodecInst;
+
+class AudioEncoderMutableG729
+    : public AudioEncoderMutableImpl<AudioEncoderG729> {
+ public:
+  explicit AudioEncoderMutableG729(const CodecInst& codec_inst);
+
+  // Set G729 DTX. Once enabled, G729 stops transmission, when it detects voice
+  // being inactive. During that, it still sends 2 packets (one for content, one
+  // for signaling) about every 400 ms.
+  bool SetDtx(bool enable) override;
+
+  bool dtx_enabled() const {
+    CriticalSectionScoped cs(encoder_lock_.get());
+    return encoder()->dtx_enabled();
+  }
 };
 
 }  // namespace webrtc
