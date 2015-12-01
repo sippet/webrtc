@@ -26,8 +26,8 @@
 #if !defined(INT_TYPES_DEFINED)
 #define INT_TYPES_DEFINED
 #ifdef COMPILER_MSVC
-typedef unsigned __int64 uint64;
-typedef __int64 int64;
+typedef uint64_t uint64;
+typedef int64_t int64;
 #ifndef INT64_C
 #define INT64_C(x) x ## I64
 #endif
@@ -49,8 +49,8 @@ typedef int64_t int64;
 #endif
 #define INT64_F "l"
 #elif defined(__LP64__)
-typedef unsigned long long uint64;  // NOLINT
-typedef long long int64;  // NOLINT
+typedef uint64_t uint64;  // NOLINT
+typedef int64_t int64;  // NOLINT
 #ifndef INT64_C
 #define INT64_C(x) x ## L
 #endif
@@ -59,8 +59,8 @@ typedef long long int64;  // NOLINT
 #endif
 #define INT64_F "l"
 #else  // __LP64__
-typedef unsigned long long uint64;  // NOLINT
-typedef long long int64;  // NOLINT
+typedef uint64_t uint64;  // NOLINT
+typedef int64_t int64;  // NOLINT
 #ifndef INT64_C
 #define INT64_C(x) x ## LL
 #endif
@@ -70,12 +70,12 @@ typedef long long int64;  // NOLINT
 #define INT64_F "ll"
 #endif  // __LP64__
 #endif  // COMPILER_MSVC
-typedef unsigned int uint32;
-typedef int int32;
-typedef unsigned short uint16;  // NOLINT
-typedef short int16;  // NOLINT
-typedef unsigned char uint8;
-typedef signed char int8;
+typedef uint32_t uint32;
+typedef int32_t int32;
+typedef uint16_t uint16;  // NOLINT
+typedef int16_t int16;  // NOLINT
+typedef uint8_t uint8;
+typedef int8_t int8;
 #endif  // INT_TYPES_DEFINED
 
 // Detect compiler is for x86 or x64.
