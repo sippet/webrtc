@@ -72,7 +72,7 @@ const CodecInst ACMCodecDB::database_[] = {
 #endif
 #ifdef WEBRTC_CODEC_G729
   // Mono
-  {18, "G729", 8000, 80, 1, 8000},
+  {18, "G729", 8000, 160, 1, 8000},
 #endif
   // Comfort noise for four different sampling frequencies.
   {13, "CN", 8000, 240, 1, 0},
@@ -194,6 +194,10 @@ const NetEqDecoder ACMCodecDB::neteq_decoders_[] = {
 #ifdef WEBRTC_CODEC_OPUS
     // Mono and stereo.
     kDecoderOpus,
+#endif
+#ifdef WEBRTC_CODEC_G729
+    // Mono
+    kDecoderG729,
 #endif
     // Comfort noise for three different sampling frequencies.
     kDecoderCNGnb,

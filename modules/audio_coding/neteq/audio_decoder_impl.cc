@@ -413,6 +413,7 @@ int AudioDecoderG729::DecodeInternal(const uint8_t* encoded,
                                      int sample_rate_hz,
                                      int16_t* decoded,
                                      SpeechType* speech_type) {
+  DCHECK_EQ(sample_rate_hz, 8000);
   int16_t temp_type = 1;  // Default is speech.
   int16_t ret = WebRtcG729_Decode(dec_state_, encoded,
                                   static_cast<int16_t>(encoded_len), decoded,
@@ -431,8 +432,10 @@ int AudioDecoderG729::Init() {
 
 int AudioDecoderG729::PacketDuration(const uint8_t* encoded,
                                      size_t encoded_len) const {
-  // 10 bytes = 80 samples (10ms @ 8kHz)
-  return (encoded_len / L_PACKED_G729A) * 80;
+  // One or more G.729A frames, followed by one or more G.729B frames
+  size_t speech_frms = encoded_len / 10;
+  size_t sid_frms = (encoded_len % 10) / 2;
+  return (speech_frms + sid_frms) * 80;
 }
 #endif
 

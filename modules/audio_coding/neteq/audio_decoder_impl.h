@@ -246,7 +246,7 @@ class AudioDecoderG729 : public AudioDecoder {
  public:
   AudioDecoderG729();
   ~AudioDecoderG729() override;
-  bool HasDecodePlc() const { return true; }
+  bool HasDecodePlc() const override { return true; }
   int DecodePlc(int num_frames, int16_t* decoded) override;
   int Init() override;
   size_t Channels() const override;

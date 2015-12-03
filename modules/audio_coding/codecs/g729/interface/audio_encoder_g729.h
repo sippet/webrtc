@@ -59,8 +59,7 @@ class AudioEncoderMutableG729
   explicit AudioEncoderMutableG729(const CodecInst& codec_inst);
 
   // Set G729 DTX. Once enabled, G729 stops transmission, when it detects voice
-  // being inactive. During that, it still sends 2 packets (one for content, one
-  // for signaling) about every 400 ms.
+  // being inactive.
   bool SetDtx(bool enable) override;
 
   bool dtx_enabled() const {
