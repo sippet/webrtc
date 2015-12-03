@@ -302,13 +302,8 @@ void Port::OnReadPacket(
   rtc::scoped_ptr<IceMessage> msg;
   std::string remote_username;
   if (!GetStunMessage(data, size, addr, msg.accept(), &remote_username)) {
-    if (ice_role_ == ICEROLE_CONTROLLED) {
-      // Behave as if a new unknown address just arrived.
-      SignalUnknownAddress(this, addr, proto, msg.get(), remote_username, false);
-    } else {
-      LOG_J(LS_ERROR, this) << "Received non-STUN packet from unknown address "
-                            << "(" << addr.ToSensitiveString() << ")";
-    }
+    LOG_J(LS_ERROR, this) << "Received non-STUN packet from unknown address ("
+                          << addr.ToSensitiveString() << ")";
   } else if (!msg) {
     // STUN message handled already
   } else if (msg->type() == STUN_BINDING_REQUEST) {

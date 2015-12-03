@@ -456,34 +456,6 @@ void P2PTransportChannel::OnUnknownAddress(
     bool port_muxed) {
   ASSERT(worker_thread_ == rtc::Thread::Current());
 
-  // If ICE is turned off, create a "fake" remote candidate and sort it out.
-  if (remote_ice_mode_ == ICEMODE_NONE) {
-    Candidate remote_candidate(component(), ProtoToString(proto), address, 0,
-                  remote_username, "", STUN_PORT_TYPE, 0U, "");
-    remote_candidate.set_foundation(
-        rtc::ToString<uint32>(rtc::ComputeCrc32(remote_candidate.id())));
-    remote_candidate.set_priority(42);
-
-    // There shouldn't be an existing connection with this remote address.
-    if (port->GetConnection(remote_candidate.address())) {
-      return;
-    }
-
-    Connection* connection = port->CreateConnection(
-        remote_candidate, cricket::PortInterface::ORIGIN_THIS_PORT);
-    if (!connection) {
-      return;
-    }
-
-    LOG(LS_INFO) << "Adding connection from non-ICE candidate: "
-                 << remote_candidate.ToString();
-    AddConnection(connection);
-    SwitchBestConnectionTo(connection);
-    connection->ForceStart();
-    SortConnections();
-    return;
-  }
-
   // Port has received a valid stun packet from an address that no Connection
   // is currently available for. See if we already have a candidate with the
   // address. If it isn't we need to create new candidate for it.
