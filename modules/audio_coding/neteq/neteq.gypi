@@ -11,10 +11,6 @@
     'codecs': [
       'cng',
       'g711',
-      'g722',
-      'ilbc',
-      'isac',
-      'isac_fix',
       'pcm16b',
     ],
     'neteq_defines': [],
@@ -26,6 +22,23 @@
       ['include_g729==1', {
         'codecs': ['webrtc_g729',],
         'neteq_defines': ['WEBRTC_CODEC_G729',],
+      }],
+      ['build_with_mozilla==0', {
+        'conditions': [
+          ['target_arch=="arm"', {
+            'codecs': ['isac_fix',],
+            'neteq_defines': ['WEBRTC_CODEC_ISACFX',],
+          }, {
+            'codecs': ['isac',],
+            'neteq_defines': ['WEBRTC_CODEC_ISAC',],
+          }],
+        ],
+        'codecs': ['g722',],
+        'neteq_defines': ['WEBRTC_CODEC_G722',],
+      }],
+      ['build_with_mozilla==0 and build_with_chromium==0', {
+        'codecs': ['ilbc',],
+        'neteq_defines': ['WEBRTC_CODEC_ILBC',],
       }],
     ],
     'neteq_dependencies': [
@@ -124,6 +137,10 @@
           'type': '<(gtest_target_type)',
           'dependencies': [
             '<@(codecs)',
+            'g722',
+            'ilbc',
+            'isac',
+            'isac_fix',
             'audio_decoder_interface',
             'neteq_unittest_tools',
             '<(DEPTH)/testing/gtest.gyp:gtest',
@@ -132,12 +149,6 @@
             '<(DEPTH)/base/base.gyp:base',
           ],
           'defines': [
-            'AUDIO_DECODER_UNITTEST',
-            'WEBRTC_CODEC_G722',
-            'WEBRTC_CODEC_ILBC',
-            'WEBRTC_CODEC_ISACFX',
-            'WEBRTC_CODEC_ISAC',
-            'WEBRTC_CODEC_PCM16',
             '<@(neteq_defines)',
           ],
           'include_dirs': [
@@ -204,23 +215,6 @@
               'type': 'none',
               'dependencies': [
                 '<(apk_tests_path):audio_decoder_unittests_apk',
-              ],
-            },
-          ],
-        }],
-        ['test_isolation_mode != "noop"', {
-          'targets': [
-            {
-              'target_name': 'audio_decoder_unittests_run',
-              'type': 'none',
-              'dependencies': [
-                'audio_decoder_unittests',
-              ],
-              'includes': [
-                '../../../build/isolate.gypi',
-              ],
-              'sources': [
-                'audio_decoder_unittests.isolate',
               ],
             },
           ],

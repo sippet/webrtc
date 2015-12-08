@@ -13,20 +13,21 @@
 
 import matplotlib
 import matplotlib.pyplot as plt
-import math
 import numpy
 import re
 import sys
 
+# Change this to True to save the figure to a file. Look below for details.
+save_figure = False
 
-class Variable:
+class Variable(object):
   def __init__(self, variable):
     self._ID = variable[0]
     self._xlabel = variable[1]
     self._ylabel = variable[2]
     self._subplot = variable[3]
     self._y_max = variable[4]
-    self._samples = dict()
+    self.samples = dict()
 
   def getID(self):
     return self._ID
@@ -44,81 +45,89 @@ class Variable:
     return self._y_max
 
   def getNumberOfFlows(self):
-    return len(self._samples)
+    return len(self.samples)
 
 
   def addSample(self, line):
-    groups = re.search(r'/\d_(\w+)#\d@(\w*)', line)
+    groups = re.search(r'_(((\d)+((,(\d)+)*))_(\D+))#\d@(\S+)', line)
+
+    # Each variable will be plotted in a separated box.
     var_name = groups.group(1)
-    alg_name = groups.group(2)
+    alg_name = groups.group(8)
 
-    if alg_name not in self._samples.keys():
-      self._samples[alg_name] = {}
+    alg_name = alg_name.replace('_', ' ')
 
-    if var_name not in self._samples[alg_name].keys():
-      self._samples[alg_name][var_name] = []
+    if alg_name not in self.samples.keys():
+      self.samples[alg_name] = {}
+
+    if var_name not in self.samples[alg_name].keys():
+      self.samples[alg_name][var_name] = []
 
     sample = re.search(r'(\d+\.\d+)\t([-]?\d+\.\d+)', line)
-    s = (sample.group(1),sample.group(2))
-    self._samples[alg_name][var_name].append(s)
+
+    s = (sample.group(1), sample.group(2))
+    self.samples[alg_name][var_name].append(s)
 
 def plotVar(v, ax, show_legend, show_x_label):
   if show_x_label:
     ax.set_xlabel(v.getXLabel(), fontsize='large')
   ax.set_ylabel(v.getYLabel(), fontsize='large')
 
-  for alg in v._samples.keys():
-    i = 1
-    for series in v._samples[alg].keys():
-      x = [sample[0] for sample in v._samples[alg][series]]
-      y = [sample[1] for sample in v._samples[alg][series]]
+  for alg in v.samples.keys():
+
+    for series in v.samples[alg].keys():
+
+      x = [sample[0] for sample in v.samples[alg][series]]
+      y = [sample[1] for sample in v.samples[alg][series]]
       x = numpy.array(x)
       y = numpy.array(y)
-      line = plt.plot(x, y, label=alg, linewidth=4.0)
-      colormap = {'Available1':'#AAAAAA',
-                  'Available2':'#AAAAAA',
-                  'GCC1':'#80D000',
-                  'GCC2':'#008000',
-                  'GCC3':'#00F000',
-                  'GCC4':'#00B000',
-                  'GCC5':'#70B020',
-                  'NADA1':'#0000AA',
-                  'NADA2':'#A0A0FF',
-                  'NADA3':'#0000FF',
-                  'NADA4':'#C0A0FF',
-                  'NADA5':'#9060B0',
-                  'TCP1':'#AAAAAA',
-                  'TCP2':'#AAAAAA',
-                  'TCP3':'#AAAAAA',
-                  'TCP4':'#AAAAAA',
-                  'TCP5':'#AAAAAA',
-                  'TCP6':'#AAAAAA',
-                  'TCP7':'#AAAAAA',
-                  'TCP8':'#AAAAAA',
-                  'TCP9':'#AAAAAA',
-                  'TCP10':'#AAAAAA',}
 
-      plt.setp(line, color=colormap[alg + str(i)])
+      line = plt.plot(x, y, label=alg, linewidth=4.0)
+
+      colormap = {'Available0':'#AAAAAA',
+                  'Available1':'#AAAAAA',
+                  'GCC0':'#80D000',
+                  'GCC1':'#008000',
+                  'GCC2':'#00F000',
+                  'GCC3':'#00B000',
+                  'GCC4':'#70B020',
+                  'NADA0':'#0000AA',
+                  'NADA1':'#A0A0FF',
+                  'NADA2':'#0000FF',
+                  'NADA3':'#C0A0FF',
+                  'NADA4':'#9060B0',}
+
+      flow_id = re.search(r'(\d+(,\d+)*)', series)  # One or multiple ids.
+      key = alg + flow_id.group(1)
+
+      if key in colormap:
+        plt.setp(line, color=colormap[key])
+      elif alg == 'TCP':
+        plt.setp(line, color='#AAAAAA')
+      else:
+        plt.setp(line, color='#654321')
+
       if alg.startswith('Available'):
         plt.setp(line, linestyle='--')
       plt.grid(True)
 
-      x1, x2, y1, y2 = plt.axis()
+      # x1, x2, y1, y2
+      _, x2, _, y2 = plt.axis()
       if v.getYMax() >= 0:
         y2 = v.getYMax()
       plt.axis((0, x2, 0, y2))
-      i += 1
 
     if show_legend:
-      legend = plt.legend(loc='upper right', shadow=True,
-                          fontsize='large', ncol=len(v._samples))
+      plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.40),
+                 shadow=True, fontsize='large', ncol=len(v.samples))
 
-if __name__ == '__main__':
-
+def main():
   variables = [
           ('Throughput_kbps', "Time (s)", "Throughput (kbps)", 1, 4000),
           ('Delay_ms', "Time (s)", "One-way Delay (ms)", 2, 500),
           ('Packet_Loss', "Time (s)", "Packet Loss Ratio", 3, 1.0),
+          # ('Sending_Estimate_kbps', "Time (s)", "Sending Estimate (kbps)",
+          #                                                        4, 4000),
           ]
 
   var = []
@@ -130,13 +139,13 @@ if __name__ == '__main__':
   # Add samples to the objects.
   for line in sys.stdin:
     if line.startswith("[ RUN      ]"):
-        test_name = re.search('\.(\w+)', line).group(1)
+      test_name = re.search(r'\.(\w+)', line).group(1)
     if line.startswith("PLOT"):
       for v in var:
         if v.getID() in line:
           v.addSample(line)
 
-  matplotlib.rcParams.update({'font.size': 20})
+  matplotlib.rcParams.update({'font.size': 48/len(variables)})
 
   # Plot variables.
   fig = plt.figure()
@@ -149,6 +158,9 @@ if __name__ == '__main__':
     plotVar(v, ax, i == 0, i == n - 1)
     i += 1
 
-  #fig.savefig(test_name+".jpg")
+  if save_figure:
+    fig.savefig(test_name + ".png")
   plt.show()
-  
+
+if __name__ == '__main__':
+  main()

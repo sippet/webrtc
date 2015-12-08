@@ -40,11 +40,9 @@ enum { kDefaultStartBitrateKbps = 300 };
 
 enum VCMVideoProtection {
   kProtectionNone,
-  kProtectionNack,                // Both send-side and receive-side
+  kProtectionNack,
   kProtectionFEC,
   kProtectionNackFEC,
-  kProtectionKeyOnLoss,
-  kProtectionKeyOnKeyLoss,
 };
 
 enum VCMTemporalDecimation {
@@ -78,7 +76,7 @@ class VCMReceiveCallback {
     return -1;
   }
   // Called when the current receive codec changes.
-  virtual void IncomingCodecChanged(const VideoCodec& codec) {}
+  virtual void OnIncomingPayloadType(int payload_type) {}
 
  protected:
   virtual ~VCMReceiveCallback() {

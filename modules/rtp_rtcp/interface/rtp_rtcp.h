@@ -19,11 +19,13 @@
 
 namespace webrtc {
 // Forward declarations.
-class PacedSender;
 class ReceiveStatistics;
 class RemoteBitrateEstimator;
 class RtpReceiver;
 class Transport;
+namespace rtcp {
+class TransportFeedback;
+}
 
 class RtpRtcp : public Module {
  public:
@@ -53,7 +55,6 @@ class RtpRtcp : public Module {
     *  paced_sender             - Spread any bursts of packets into smaller
     *                             bursts to minimize packet loss.
     */
-    int32_t id;
     bool audio;
     bool receiver_only;
     Clock* clock;
@@ -61,11 +62,13 @@ class RtpRtcp : public Module {
     Transport* outgoing_transport;
     RtcpIntraFrameObserver* intra_frame_callback;
     RtcpBandwidthObserver* bandwidth_callback;
+    TransportFeedbackObserver* transport_feedback_callback;
     RtcpRttStats* rtt_stats;
     RtcpPacketTypeCounterObserver* rtcp_packet_type_counter_observer;
     RtpAudioFeedback* audio_messages;
     RemoteBitrateEstimator* remote_bitrate_estimator;
-    PacedSender* paced_sender;
+    RtpPacketSender* paced_sender;
+    TransportSequenceNumberAllocator* transport_sequence_number_allocator;
     BitrateStatisticsObserver* send_bitrate_observer;
     FrameCountObserver* send_frame_count_observer;
     SendSideDelayObserver* send_side_delay_observer;
@@ -324,14 +327,14 @@ class RtpRtcp : public Module {
     /*
     *    Get RTCP status
     */
-    virtual RTCPMethod RTCP() const = 0;
+    virtual RtcpMode RTCP() const = 0;
 
     /*
     *   configure RTCP status i.e on(compound or non- compound)/off
     *
     *   method  - RTCP method to use
     */
-    virtual void SetRTCPStatus(RTCPMethod method) = 0;
+    virtual void SetRTCPStatus(RtcpMode method) = 0;
 
     /*
     *   Set RTCP CName (i.e unique identifier)
@@ -488,13 +491,6 @@ class RtpRtcp : public Module {
                              const std::vector<uint32_t>& ssrcs) = 0;
 
     /*
-    *   (IJ) Extended jitter report.
-    */
-    virtual bool IJ() const = 0;
-
-    virtual void SetIJStatus(bool enable) = 0;
-
-    /*
     *   (TMMBR) Temporary Max Media Bit Rate
     */
     virtual bool TMMBR() const = 0;
@@ -546,6 +542,8 @@ class RtpRtcp : public Module {
         RtcpStatisticsCallback* callback) = 0;
     virtual RtcpStatisticsCallback*
         GetRtcpStatisticsCallback() = 0;
+    // BWE feedback packets.
+    virtual bool SendFeedbackPacket(const rtcp::TransportFeedback& packet) = 0;
 
     /**************************************************************************
     *

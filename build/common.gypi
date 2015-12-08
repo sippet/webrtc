@@ -44,9 +44,13 @@
       'opus_dir%': '<(DEPTH)/third_party/opus',
       'include_g729%': 1,
       'g729_dir%': '<(DEPTH)/third_party/g729',
+
+      # Enable to use the Mozilla internal settings.
+      'build_with_mozilla%': 0,
     },
     'build_with_chromium%': '<(build_with_chromium)',
     'build_with_libjingle%': '<(build_with_libjingle)',
+    'build_with_mozilla%': '<(build_with_mozilla)',
     'webrtc_root%': '<(webrtc_root)',
     'apk_tests_path%': '<(apk_tests_path)',
     'modules_java_gyp_path%': '<(modules_java_gyp_path)',
@@ -102,11 +106,8 @@
     # Disable by default
     'have_dbus_glib%': 0,
 
-    # Enable to use the Mozilla internal settings.
-    'build_with_mozilla%': 0,
-
     # Make it possible to provide custom locations for some libraries.
-    'libvpx_dir%': '<(DEPTH)/third_party/libvpx',
+    'libvpx_dir%': '<(DEPTH)/third_party/libvpx_new',
     'libyuv_dir%': '<(DEPTH)/third_party/libyuv',
     'opus_dir%': '<(opus_dir)',
     'g729_dir%': '<(g729_dir)',
@@ -228,7 +229,7 @@
           '<(DEPTH)',
           # The overrides must be included before the WebRTC root as that's the
           # mechanism for selecting the override headers in Chromium.
-          '../overrides',
+          '../../webrtc_overrides',
           # The WebRTC root is needed to allow includes in the WebRTC code base
           # to be prefixed with webrtc/.
           '../..',
@@ -377,7 +378,7 @@
           'WEBRTC_ANDROID',
          ],
          'conditions': [
-           ['clang!=1', {
+           ['clang==0', {
              # The Android NDK doesn't provide optimized versions of these
              # functions. Ensure they are disabled for all compilers.
              'cflags': [
@@ -409,9 +410,9 @@
             'WEBRTC_CHROMIUM_BUILD',
           ],
           'include_dirs': [
-            # overrides must be included first as that is the mechanism for
+            # The overrides must be included first as that is the mechanism for
             # selecting the override headers in Chromium.
-            '../overrides',
+            '../../webrtc_overrides',
             '../..',
           ],
         }, {

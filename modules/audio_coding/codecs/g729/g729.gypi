@@ -35,7 +35,9 @@
       ],
       'sources': [
         'audio_encoder_g729.cc',
+        'audio_decoder_g729.cc',
         'interface/audio_encoder_g729.h',
+        'interface/audio_decoder_g729.h',
         'interface/g729_interface.h',
         'g729_inst.h',
         'g729_interface.c',

@@ -19,9 +19,9 @@
 namespace webrtc {
 namespace {
 
-const int kSamplesPer16kHzChannel = 160;
-const int kSamplesPer32kHzChannel = 320;
-const int kSamplesPer48kHzChannel = 480;
+const size_t kSamplesPer16kHzChannel = 160;
+const size_t kSamplesPer32kHzChannel = 320;
+const size_t kSamplesPer48kHzChannel = 480;
 
 int KeyboardChannelIndex(const StreamConfig& stream_config) {
   if (!stream_config.has_keyboard()) {
@@ -32,23 +32,22 @@ int KeyboardChannelIndex(const StreamConfig& stream_config) {
   return stream_config.num_channels();
 }
 
-int NumBandsFromSamplesPerChannel(int num_frames) {
-  int num_bands = 1;
+size_t NumBandsFromSamplesPerChannel(size_t num_frames) {
+  size_t num_bands = 1;
   if (num_frames == kSamplesPer32kHzChannel ||
       num_frames == kSamplesPer48kHzChannel) {
-    num_bands = rtc::CheckedDivExact(num_frames,
-                                     static_cast<int>(kSamplesPer16kHzChannel));
+    num_bands = rtc::CheckedDivExact(num_frames, kSamplesPer16kHzChannel);
   }
   return num_bands;
 }
 
 }  // namespace
 
-AudioBuffer::AudioBuffer(int input_num_frames,
+AudioBuffer::AudioBuffer(size_t input_num_frames,
                          int num_input_channels,
-                         int process_num_frames,
+                         size_t process_num_frames,
                          int num_process_channels,
-                         int output_num_frames)
+                         size_t output_num_frames)
   : input_num_frames_(input_num_frames),
     num_input_channels_(num_input_channels),
     proc_num_frames_(process_num_frames),
@@ -345,20 +344,20 @@ void AudioBuffer::set_num_channels(int num_channels) {
   num_channels_ = num_channels;
 }
 
-int AudioBuffer::num_frames() const {
+size_t AudioBuffer::num_frames() const {
   return proc_num_frames_;
 }
 
-int AudioBuffer::num_frames_per_band() const {
+size_t AudioBuffer::num_frames_per_band() const {
   return num_split_frames_;
 }
 
-int AudioBuffer::num_keyboard_frames() const {
+size_t AudioBuffer::num_keyboard_frames() const {
   // We don't resample the keyboard channel.
   return input_num_frames_;
 }
 
-int AudioBuffer::num_bands() const {
+size_t AudioBuffer::num_bands() const {
   return num_bands_;
 }
 
@@ -403,21 +402,37 @@ void AudioBuffer::DeinterleaveFrom(AudioFrame* frame) {
   }
 }
 
-void AudioBuffer::InterleaveTo(AudioFrame* frame, bool data_changed) const {
-  assert(proc_num_frames_ == output_num_frames_);
-  assert(num_channels_ == num_input_channels_);
-  assert(frame->num_channels_ == num_channels_);
-  assert(frame->samples_per_channel_ == proc_num_frames_);
+void AudioBuffer::InterleaveTo(AudioFrame* frame, bool data_changed) {
   frame->vad_activity_ = activity_;
-
   if (!data_changed) {
     return;
   }
 
-  Interleave(data_->ibuf()->channels(),
-             proc_num_frames_,
-             num_channels_,
-             frame->data_);
+  assert(frame->num_channels_ == num_channels_ || num_channels_ == 1);
+  assert(frame->samples_per_channel_ == output_num_frames_);
+
+  // Resample if necessary.
+  IFChannelBuffer* data_ptr = data_.get();
+  if (proc_num_frames_ != output_num_frames_) {
+    if (!output_buffer_) {
+      output_buffer_.reset(
+          new IFChannelBuffer(output_num_frames_, num_channels_));
+    }
+    for (int i = 0; i < num_channels_; ++i) {
+      output_resamplers_[i]->Resample(
+          data_->fbuf()->channels()[i], proc_num_frames_,
+          output_buffer_->fbuf()->channels()[i], output_num_frames_);
+    }
+    data_ptr = output_buffer_.get();
+  }
+
+  if (frame->num_channels_ == num_channels_) {
+    Interleave(data_ptr->ibuf()->channels(), proc_num_frames_, num_channels_,
+               frame->data_);
+  } else {
+    UpmixMonoToInterleaved(data_ptr->ibuf()->channels()[0], proc_num_frames_,
+                           frame->num_channels_, frame->data_);
+  }
 }
 
 void AudioBuffer::CopyLowPassToReference() {

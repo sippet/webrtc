@@ -65,19 +65,34 @@ void FloatS16ToS16(const float* src, size_t size, int16_t* dest);
 void FloatToFloatS16(const float* src, size_t size, float* dest);
 void FloatS16ToFloat(const float* src, size_t size, float* dest);
 
+// Copy audio from |src| channels to |dest| channels unless |src| and |dest|
+// point to the same address. |src| and |dest| must have the same number of
+// channels, and there must be sufficient space allocated in |dest|.
+template <typename T>
+void CopyAudioIfNeeded(const T* const* src,
+                       int num_frames,
+                       int num_channels,
+                       T* const* dest) {
+  for (int i = 0; i < num_channels; ++i) {
+    if (src[i] != dest[i]) {
+      std::copy(src[i], src[i] + num_frames, dest[i]);
+    }
+  }
+}
+
 // Deinterleave audio from |interleaved| to the channel buffers pointed to
 // by |deinterleaved|. There must be sufficient space allocated in the
 // |deinterleaved| buffers (|num_channel| buffers with |samples_per_channel|
 // per buffer).
 template <typename T>
 void Deinterleave(const T* interleaved,
-                  int samples_per_channel,
+                  size_t samples_per_channel,
                   int num_channels,
                   T* const* deinterleaved) {
   for (int i = 0; i < num_channels; ++i) {
     T* channel = deinterleaved[i];
     int interleaved_idx = i;
-    for (int j = 0; j < samples_per_channel; ++j) {
+    for (size_t j = 0; j < samples_per_channel; ++j) {
       channel[j] = interleaved[interleaved_idx];
       interleaved_idx += num_channels;
     }
@@ -89,25 +104,41 @@ void Deinterleave(const T* interleaved,
 // (|samples_per_channel| * |num_channels|).
 template <typename T>
 void Interleave(const T* const* deinterleaved,
-                int samples_per_channel,
+                size_t samples_per_channel,
                 int num_channels,
                 T* interleaved) {
   for (int i = 0; i < num_channels; ++i) {
     const T* channel = deinterleaved[i];
     int interleaved_idx = i;
-    for (int j = 0; j < samples_per_channel; ++j) {
+    for (size_t j = 0; j < samples_per_channel; ++j) {
       interleaved[interleaved_idx] = channel[j];
       interleaved_idx += num_channels;
     }
   }
 }
 
+// Copies audio from a single channel buffer pointed to by |mono| to each
+// channel of |interleaved|. There must be sufficient space allocated in
+// |interleaved| (|samples_per_channel| * |num_channels|).
+template <typename T>
+void UpmixMonoToInterleaved(const T* mono,
+                            int num_frames,
+                            int num_channels,
+                            T* interleaved) {
+  int interleaved_idx = 0;
+  for (int i = 0; i < num_frames; ++i) {
+    for (int j = 0; j < num_channels; ++j) {
+      interleaved[interleaved_idx++] = mono[i];
+    }
+  }
+}
+
 template <typename T, typename Intermediate>
 void DownmixToMono(const T* const* input_channels,
-                   int num_frames,
+                   size_t num_frames,
                    int num_channels,
                    T* out) {
-  for (int i = 0; i < num_frames; ++i) {
+  for (size_t i = 0; i < num_frames; ++i) {
     Intermediate value = input_channels[0][i];
     for (int j = 1; j < num_channels; ++j) {
       value += input_channels[j][i];
@@ -120,11 +151,11 @@ void DownmixToMono(const T* const* input_channels,
 // all channels.
 template <typename T, typename Intermediate>
 void DownmixInterleavedToMonoImpl(const T* interleaved,
-                                  int num_frames,
+                                  size_t num_frames,
                                   int num_channels,
                                   T* deinterleaved) {
-  DCHECK_GT(num_channels, 0);
-  DCHECK_GT(num_frames, 0);
+  RTC_DCHECK_GT(num_channels, 0);
+  RTC_DCHECK_GT(num_frames, 0u);
 
   const T* const end = interleaved + num_frames * num_channels;
 
@@ -142,13 +173,13 @@ void DownmixInterleavedToMonoImpl(const T* interleaved,
 
 template <typename T>
 void DownmixInterleavedToMono(const T* interleaved,
-                              int num_frames,
+                              size_t num_frames,
                               int num_channels,
                               T* deinterleaved);
 
 template <>
 void DownmixInterleavedToMono<int16_t>(const int16_t* interleaved,
-                                       int num_frames,
+                                       size_t num_frames,
                                        int num_channels,
                                        int16_t* deinterleaved);
 

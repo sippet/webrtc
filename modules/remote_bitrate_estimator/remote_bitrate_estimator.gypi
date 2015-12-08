@@ -21,6 +21,7 @@
       'sources': [
         'include/bwe_defines.h',
         'include/remote_bitrate_estimator.h',
+        'include/send_time_history.h',
         'aimd_rate_control.cc',
         'aimd_rate_control.h',
         'inter_arrival.cc',
@@ -35,6 +36,11 @@
         'remote_bitrate_estimator_abs_send_time.h',
         'remote_bitrate_estimator_single_stream.cc',
         'remote_bitrate_estimator_single_stream.h',
+        'remote_estimator_proxy.cc',
+        'remote_estimator_proxy.h',
+        'send_time_history.cc',
+        'transport_feedback_adapter.cc',
+        'transport_feedback_adapter.h',
         'test/bwe_test_logging.cc',
         'test/bwe_test_logging.h',
       ], # source

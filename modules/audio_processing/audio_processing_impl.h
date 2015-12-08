@@ -23,6 +23,7 @@ namespace webrtc {
 
 class AgcManagerDirect;
 class AudioBuffer;
+class AudioConverter;
 
 template<typename T>
 class Beamformer;
@@ -39,6 +40,7 @@ class NoiseSuppressionImpl;
 class ProcessingComponent;
 class TransientSuppressor;
 class VoiceDetectionImpl;
+class IntelligibilityEnhancer;
 
 #ifdef WEBRTC_AUDIOPROC_DEBUG_DUMP
 namespace audioproc {
@@ -66,19 +68,15 @@ class AudioProcessingImpl : public AudioProcessing {
                  ChannelLayout reverse_layout) override;
   int Initialize(const ProcessingConfig& processing_config) override;
   void SetExtraOptions(const Config& config) override;
-  int set_sample_rate_hz(int rate) override;
-  int input_sample_rate_hz() const override;
-  int sample_rate_hz() const override;
   int proc_sample_rate_hz() const override;
   int proc_split_sample_rate_hz() const override;
   int num_input_channels() const override;
   int num_output_channels() const override;
   int num_reverse_channels() const override;
   void set_output_will_be_muted(bool muted) override;
-  bool output_will_be_muted() const override;
   int ProcessStream(AudioFrame* frame) override;
   int ProcessStream(const float* const* src,
-                    int samples_per_channel,
+                    size_t samples_per_channel,
                     int input_sample_rate_hz,
                     ChannelLayout input_layout,
                     int output_sample_rate_hz,
@@ -89,19 +87,21 @@ class AudioProcessingImpl : public AudioProcessing {
                     const StreamConfig& output_config,
                     float* const* dest) override;
   int AnalyzeReverseStream(AudioFrame* frame) override;
+  int ProcessReverseStream(AudioFrame* frame) override;
   int AnalyzeReverseStream(const float* const* data,
-                           int samples_per_channel,
+                           size_t samples_per_channel,
                            int sample_rate_hz,
                            ChannelLayout layout) override;
-  int AnalyzeReverseStream(const float* const* data,
-                           const StreamConfig& reverse_config) override;
+  int ProcessReverseStream(const float* const* src,
+                           const StreamConfig& reverse_input_config,
+                           const StreamConfig& reverse_output_config,
+                           float* const* dest) override;
   int set_stream_delay_ms(int delay) override;
   int stream_delay_ms() const override;
   bool was_stream_delay_set() const override;
   void set_delay_offset_ms(int offset) override;
   int delay_offset_ms() const override;
   void set_stream_key_pressed(bool key_pressed) override;
-  bool stream_key_pressed() const override;
   int StartDebugRecording(const char filename[kMaxFilenameSize]) override;
   int StartDebugRecording(FILE* handle) override;
   int StartDebugRecordingForPlatformFile(rtc::PlatformFile handle) override;
@@ -124,16 +124,23 @@ class AudioProcessingImpl : public AudioProcessing {
       EXCLUSIVE_LOCKS_REQUIRED(crit_);
   int MaybeInitializeLocked(const ProcessingConfig& config)
       EXCLUSIVE_LOCKS_REQUIRED(crit_);
+  // TODO(ekm): Remove once all clients updated to new interface.
+  int AnalyzeReverseStream(const float* const* src,
+                           const StreamConfig& input_config,
+                           const StreamConfig& output_config);
   int ProcessStreamLocked() EXCLUSIVE_LOCKS_REQUIRED(crit_);
-  int AnalyzeReverseStreamLocked() EXCLUSIVE_LOCKS_REQUIRED(crit_);
+  int ProcessReverseStreamLocked() EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
   bool is_data_processed() const;
   bool output_copy_needed(bool is_data_processed) const;
   bool synthesis_needed(bool is_data_processed) const;
   bool analysis_needed(bool is_data_processed) const;
+  bool is_rev_processed() const;
+  bool rev_conversion_needed() const;
   void InitializeExperimentalAgc() EXCLUSIVE_LOCKS_REQUIRED(crit_);
   void InitializeTransient() EXCLUSIVE_LOCKS_REQUIRED(crit_);
   void InitializeBeamformer() EXCLUSIVE_LOCKS_REQUIRED(crit_);
+  void InitializeIntelligibility() EXCLUSIVE_LOCKS_REQUIRED(crit_);
   void MaybeUpdateHistograms() EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
   EchoCancellationImpl* echo_cancellation_;
@@ -149,14 +156,24 @@ class AudioProcessingImpl : public AudioProcessing {
   CriticalSectionWrapper* crit_;
   rtc::scoped_ptr<AudioBuffer> render_audio_;
   rtc::scoped_ptr<AudioBuffer> capture_audio_;
+  rtc::scoped_ptr<AudioConverter> render_converter_;
 #ifdef WEBRTC_AUDIOPROC_DEBUG_DUMP
   // TODO(andrew): make this more graceful. Ideally we would split this stuff
   // out into a separate class with an "enabled" and "disabled" implementation.
   int WriteMessageToDebugFile();
   int WriteInitMessage();
+
+  // Writes Config message. If not |forced|, only writes the current config if
+  // it is different from the last saved one; if |forced|, writes the config
+  // regardless of the last saved.
+  int WriteConfigMessage(bool forced);
+
   rtc::scoped_ptr<FileWrapper> debug_file_;
   rtc::scoped_ptr<audioproc::Event> event_msg_;  // Protobuf message.
   std::string event_str_;  // Memory for protobuf serialization.
+
+  // Serialized string of last saved APM configuration.
+  std::string last_serialized_config_;
 #endif
 
   // Format of processing streams at input/output call sites.
@@ -192,7 +209,8 @@ class AudioProcessingImpl : public AudioProcessing {
   rtc::scoped_ptr<Beamformer<float>> beamformer_;
   const std::vector<Point> array_geometry_;
 
-  const bool supports_48kHz_;
+  bool intelligibility_enabled_;
+  rtc::scoped_ptr<IntelligibilityEnhancer> intelligibility_enhancer_;
 };
 
 }  // namespace webrtc

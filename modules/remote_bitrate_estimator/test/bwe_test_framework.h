@@ -196,7 +196,7 @@ class Random {
   uint32_t a_;
   uint32_t b_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(Random);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(Random);
 };
 
 bool IsTimeSorted(const Packets& packets);
@@ -245,21 +245,24 @@ class PacketProcessor {
   PacketProcessorListener* listener_;
   const FlowIds flow_ids_;
 
-  DISALLOW_COPY_AND_ASSIGN(PacketProcessor);
+  RTC_DISALLOW_COPY_AND_ASSIGN(PacketProcessor);
 };
 
 class RateCounterFilter : public PacketProcessor {
  public:
   RateCounterFilter(PacketProcessorListener* listener,
                     int flow_id,
-                    const char* name);
-  RateCounterFilter(PacketProcessorListener* listener,
-                    const FlowIds& flow_ids,
-                    const char* name);
+                    const char* name,
+                    const std::string& plot_name);
   RateCounterFilter(PacketProcessorListener* listener,
                     const FlowIds& flow_ids,
                     const char* name,
-                    int64_t start_plotting_time_ms);
+                    const std::string& plot_name);
+  RateCounterFilter(PacketProcessorListener* listener,
+                    const FlowIds& flow_ids,
+                    const char* name,
+                    int64_t start_plotting_time_ms,
+                    const std::string& plot_name);
   virtual ~RateCounterFilter();
 
   void LogStats();
@@ -272,8 +275,10 @@ class RateCounterFilter : public PacketProcessor {
   Stats<double> kbps_stats_;
   std::string name_;
   int64_t start_plotting_time_ms_;
+  // Algorithm name if single flow, Total link utilization if all flows.
+  std::string plot_name_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(RateCounterFilter);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(RateCounterFilter);
 };
 
 class LossFilter : public PacketProcessor {
@@ -289,7 +294,7 @@ class LossFilter : public PacketProcessor {
   Random random_;
   float loss_fraction_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(LossFilter);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(LossFilter);
 };
 
 class DelayFilter : public PacketProcessor {
@@ -305,7 +310,7 @@ class DelayFilter : public PacketProcessor {
   int64_t one_way_delay_us_;
   int64_t last_send_time_us_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(DelayFilter);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(DelayFilter);
 };
 
 class JitterFilter : public PacketProcessor {
@@ -325,7 +330,7 @@ class JitterFilter : public PacketProcessor {
   int64_t last_send_time_us_;
   bool reordering_;  // False by default.
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(JitterFilter);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(JitterFilter);
 };
 
 // Reorders two consecutive packets with a probability of reorder_percent.
@@ -342,7 +347,7 @@ class ReorderFilter : public PacketProcessor {
   Random random_;
   float reorder_fraction_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(ReorderFilter);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(ReorderFilter);
 };
 
 // Apply a bitrate choke with an infinite queue on the packet stream.
@@ -365,9 +370,8 @@ class ChokeFilter : public PacketProcessor {
   uint32_t capacity_kbps_;
   int64_t last_send_time_us_;
   rtc::scoped_ptr<DelayCapHelper> delay_cap_helper_;
-  int64_t max_delay_us_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(ChokeFilter);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(ChokeFilter);
 };
 
 class TraceBasedDeliveryFilter : public PacketProcessor {
@@ -405,7 +409,7 @@ class TraceBasedDeliveryFilter : public PacketProcessor {
   Stats<double> packets_per_second_stats_;
   Stats<double> kbps_stats_;
 
-  DISALLOW_COPY_AND_ASSIGN(TraceBasedDeliveryFilter);
+  RTC_DISALLOW_COPY_AND_ASSIGN(TraceBasedDeliveryFilter);
 };
 
 class VideoSource {
@@ -442,10 +446,8 @@ class VideoSource {
   int64_t next_frame_rand_ms_;
   int64_t now_ms_;
   RTPHeader prototype_header_;
-  int64_t start_plotting_ms_;
-  uint32_t previous_bitrate_bps_;
 
-  DISALLOW_IMPLICIT_CONSTRUCTORS(VideoSource);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(VideoSource);
 };
 
 class AdaptiveVideoSource : public VideoSource {
@@ -460,7 +462,7 @@ class AdaptiveVideoSource : public VideoSource {
   void SetBitrateBps(int bitrate_bps) override;
 
  private:
-  DISALLOW_IMPLICIT_CONSTRUCTORS(AdaptiveVideoSource);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(AdaptiveVideoSource);
 };
 
 class PeriodicKeyFrameSource : public AdaptiveVideoSource {
@@ -483,7 +485,7 @@ class PeriodicKeyFrameSource : public AdaptiveVideoSource {
   uint32_t frame_counter_;
   int compensation_bytes_;
   int compensation_per_frame_;
-  DISALLOW_IMPLICIT_CONSTRUCTORS(PeriodicKeyFrameSource);
+  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(PeriodicKeyFrameSource);
 };
 }  // namespace bwe
 }  // namespace testing

@@ -311,13 +311,17 @@ void BweTest::RunFairnessTest(BandwidthEstimatorType bwe_type,
   jitter.SetMaxJitter(max_jitter_ms);
 
   std::vector<RateCounterFilter*> rate_counters;
-  for (int flow : all_flow_ids) {
+  for (int flow : media_flow_ids) {
     rate_counters.push_back(
-        new RateCounterFilter(&uplink_, flow, "receiver_input"));
+        new RateCounterFilter(&uplink_, flow, "Receiver", bwe_names[bwe_type]));
+  }
+  for (int flow : tcp_flow_ids) {
+    rate_counters.push_back(new RateCounterFilter(&uplink_, flow, "Receiver",
+                                                  bwe_names[kTcpEstimator]));
   }
 
-  RateCounterFilter total_utilization(&uplink_, all_flow_ids,
-                                      "total_utilization");
+  RateCounterFilter total_utilization(
+      &uplink_, all_flow_ids, "total_utilization", "Total_link_utilization");
 
   std::vector<PacketReceiver*> receivers;
   // Delays is being plotted only for the first flow.
@@ -491,7 +495,8 @@ void BweTest::RunVariableCapacity2MultipleFlows(BandwidthEstimatorType bwe_type,
   DefaultEvaluationFilter up_filter(&uplink_, flow_ids);
   LinkShare link_share(&(up_filter.choke));
 
-  RateCounterFilter total_utilization(&uplink_, flow_ids, "Total_utilization");
+  RateCounterFilter total_utilization(&uplink_, flow_ids, "Total_utilization",
+                                      "Total_link_utilization");
 
   // Delays is being plotted only for the first flow.
   // To plot all of them, replace "i == 0" with "true" on new PacketReceiver().
@@ -682,7 +687,8 @@ void BweTest::RunRoundTripTimeFairness(BandwidthEstimatorType bwe_type) {
   }
 
   RateCounterFilter total_utilization(
-      &uplink_, CreateFlowIds(kAllFlowIds, kNumFlows), "Total_utilization");
+      &uplink_, CreateFlowIds(kAllFlowIds, kNumFlows), "Total_utilization",
+      "Total_link_utilization");
 
   // Delays is being plotted only for the first flow.
   // To plot all of them, replace "i == 0" with "true" on new PacketReceiver().
@@ -797,7 +803,8 @@ void BweTest::RunMultipleShortTcpFairness(
 
   LinkShare link_share(&(up_filter.choke));
 
-  RateCounterFilter total_utilization(&uplink_, flow_ids, "Total_utilization");
+  RateCounterFilter total_utilization(&uplink_, flow_ids, "Total_utilization",
+                                      "Total_link_utilization");
 
   // Delays is being plotted only for the first flow.
   // To plot all of them, replace "i == 0" with "true" on new PacketReceiver().
@@ -884,7 +891,8 @@ void BweTest::RunPauseResumeFlows(BandwidthEstimatorType bwe_type) {
   LinkShare link_share(&(filter.choke));
 
   RateCounterFilter total_utilization(
-      &uplink_, CreateFlowIds(kAllFlowIds, kNumFlows), "Total_utilization");
+      &uplink_, CreateFlowIds(kAllFlowIds, kNumFlows), "Total_utilization",
+      "Total_link_utilization");
 
   // Delays is being plotted only for the first flow.
   // To plot all of them, replace "i == 0" with "true" on new PacketReceiver().
@@ -906,13 +914,9 @@ void BweTest::RunPauseResumeFlows(BandwidthEstimatorType bwe_type) {
   filter.choke.set_capacity_kbps(3500);
 
   RunFor(40 * 1000);  // 0-40s.
-
   senders[0].get()->Pause();
-  metric_recorders[0].get()->PauseFlow();
   RunFor(20 * 1000);  // 40-60s.
-
-  senders[0].get()->Resume();
-  metric_recorders[0].get()->ResumeFlow(20 * 1000);
+  senders[0].get()->Resume(20 * 1000);
   RunFor(60 * 1000);  // 60-120s.
 
   int64_t paused[] = {20 * 1000, 0, 0};

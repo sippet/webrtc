@@ -4,8 +4,9 @@
 
 #include "webrtc/modules/audio_coding/codecs/g729/interface/audio_encoder_g729.h"
 
-#include <limits>
 #include "webrtc/base/checks.h"
+#include "webrtc/base/safe_conversions.h"
+#include "webrtc/common_types.h"
 #include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 
 namespace webrtc {
@@ -17,31 +18,43 @@ const int kNumChannels = 1;
 const size_t kSamplesPer10msFrame = 80;
 const int kBitsPerSecond = 8000;
 
-} // empty namespace
-
-AudioEncoderG729::Config::Config()
-    : frame_size_ms(10),
-      payload_type(18),
-      dtx_enabled(false) {
+AudioEncoderG729::Config CreateConfig(const CodecInst& codec_inst) {
+  AudioEncoderG729::Config config;
+  config.frame_size_ms = rtc::CheckedDivExact(codec_inst.pacsize, 8);
+  config.num_channels = codec_inst.channels;
+  config.payload_type = codec_inst.pltype;
+  return config;
 }
 
+} // empty namespace
+
 bool AudioEncoderG729::Config::IsOk() const {
-  return frame_size_ms % 10 == 0;
+  if (frame_size_ms % 10 != 0)
+    return false;
+  if (num_channels != 1)
+    return false;
+  return true;
 }
 
 AudioEncoderG729::AudioEncoderG729(const Config& config)
-    : payload_type_(config.payload_type),
-      dtx_enabled_(config.dtx_enabled),
+    : config_(config),
       num_10ms_frames_per_packet_(config.frame_size_ms / 10) {
-  CHECK_EQ(config.frame_size_ms % 10, 0)
+  RTC_CHECK(config_.IsOk());
+  RTC_CHECK_EQ(config.frame_size_ms % 10, 0)
       << "Frame size must be an integer multiple of 10 ms.";
   speech_buffer_.reserve(kSamplesPer10msFrame);
-  CHECK_EQ(0, WebRtcG729_EncoderCreate(&inst_));
-  CHECK_EQ(0, WebRtcG729_EncoderInit(inst_, config.dtx_enabled));
+  RTC_CHECK_EQ(0, WebRtcG729_EncoderCreate(&inst_));
 }
 
+AudioEncoderG729::AudioEncoderG729(const CodecInst& codec_inst)
+    : AudioEncoderG729(CreateConfig(codec_inst)) {}
+
 AudioEncoderG729::~AudioEncoderG729() {
-  CHECK_EQ(0, WebRtcG729_EncoderFree(inst_));
+  RTC_CHECK_EQ(0, WebRtcG729_EncoderFree(inst_));
+}
+
+void AudioEncoderG729::Reset() {
+  RTC_CHECK_EQ(0, WebRtcG729_EncoderInit(inst_, config_.dtx_enabled));
 }
 
 int AudioEncoderG729::SampleRateHz() const {
@@ -61,11 +74,11 @@ size_t AudioEncoderG729::MaxEncodedBytes() const {
   return num_10ms_frames_per_packet_ * 10;
 }
 
-int AudioEncoderG729::Num10MsFramesInNextPacket() const {
+size_t AudioEncoderG729::Num10MsFramesInNextPacket() const {
   return num_10ms_frames_per_packet_;
 }
 
-int AudioEncoderG729::Max10MsFramesInAPacket() const {
+size_t AudioEncoderG729::Max10MsFramesInAPacket() const {
   return num_10ms_frames_per_packet_;
 }
 
@@ -73,12 +86,22 @@ int AudioEncoderG729::GetTargetBitrate() const {
   return kBitsPerSecond;
 }
 
+bool AudioEncoderG729::SetDtx(bool enable) {
+  config_.dtx_enabled = enable;
+  RTC_CHECK_EQ(0, WebRtcG729_EncoderInit(inst_, config_.dtx_enabled));
+  return true;
+}
+
+bool AudioEncoderG729::dtx_enabled() const {
+  return config_.dtx_enabled;
+}
+
 AudioEncoder::EncodedInfo AudioEncoderG729::EncodeInternal(
     uint32_t timestamp,
     const int16_t* audio,
     size_t max_encoded_bytes,
     uint8_t* encoded) {
-  CHECK_GE(max_encoded_bytes, size_t(10));
+  RTC_CHECK_GE(max_encoded_bytes, size_t(10));
   if (speech_buffer_.empty())
     first_timestamp_in_buffer_ = timestamp;
   speech_buffer_.insert(speech_buffer_.end(), audio,
@@ -87,7 +110,7 @@ AudioEncoder::EncodedInfo AudioEncoderG729::EncodeInternal(
                                kSamplesPer10msFrame)) {
     return EncodedInfo();
   }
-  CHECK_EQ(speech_buffer_.size(),
+  RTC_CHECK_EQ(speech_buffer_.size(),
            static_cast<size_t>(num_10ms_frames_per_packet_) *
            kSamplesPer10msFrame);
   int16_t r = WebRtcG729_Encode(
@@ -100,27 +123,8 @@ AudioEncoder::EncodedInfo AudioEncoderG729::EncodeInternal(
   EncodedInfo info;
   info.encoded_bytes = r;
   info.encoded_timestamp = first_timestamp_in_buffer_;
-  info.payload_type = payload_type_;
+  info.payload_type = config_.payload_type;
   return info;
-}
-
-namespace {
-AudioEncoderG729::Config CreateConfig(const CodecInst& codec_inst) {
-  AudioEncoderG729::Config config;
-  config.frame_size_ms = rtc::CheckedDivExact(codec_inst.pacsize, 8);
-  config.payload_type = codec_inst.pltype;
-  return config;
-}
-}  // namespace
-
-AudioEncoderMutableG729::AudioEncoderMutableG729(const CodecInst& codec_inst)
-    : AudioEncoderMutableImpl<AudioEncoderG729>(CreateConfig(codec_inst)) {
-}
-
-bool AudioEncoderMutableG729::SetDtx(bool enable) {
-  auto conf = config();
-  conf.dtx_enabled = enable;
-  return Reconstruct(conf);
 }
 
 }  // namespace webrtc

@@ -17,10 +17,38 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/modules/interface/module_common_types.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe.h"
+#include "webrtc/modules/remote_bitrate_estimator/test/metric_recorder.h"
 
 namespace webrtc {
 namespace testing {
 namespace bwe {
+
+void PacketSender::Pause() {
+  running_ = false;
+  if (metric_recorder_ != nullptr) {
+    metric_recorder_->PauseFlow();
+  }
+}
+
+void PacketSender::Resume(int64_t paused_time_ms) {
+  running_ = true;
+  if (metric_recorder_ != nullptr) {
+    metric_recorder_->ResumeFlow(paused_time_ms);
+  }
+}
+
+void PacketSender::set_metric_recorder(MetricRecorder* metric_recorder) {
+  metric_recorder_ = metric_recorder;
+}
+
+void PacketSender::RecordBitrate() {
+  if (metric_recorder_ != nullptr) {
+    BWE_TEST_LOGGING_CONTEXT("Sender");
+    BWE_TEST_LOGGING_CONTEXT(*flow_ids().begin());
+    metric_recorder_->UpdateTimeMs(clock_.TimeInMilliseconds());
+    metric_recorder_->UpdateSendingEstimateKbps(TargetBitrateKbps());
+  }
+}
 
 std::list<FeedbackPacket*> GetFeedbackPackets(Packets* in_out,
                                               int64_t end_time_ms,
@@ -44,7 +72,6 @@ VideoSender::VideoSender(PacketProcessorListener* listener,
                          VideoSource* source,
                          BandwidthEstimatorType estimator_type)
     : PacketSender(listener, source->flow_id()),
-      running_(true),
       source_(source),
       bwe_(CreateBweSender(estimator_type,
                            source_->bits_per_second() / 1000,
@@ -55,6 +82,16 @@ VideoSender::VideoSender(PacketProcessorListener* listener,
 }
 
 VideoSender::~VideoSender() {
+}
+
+void VideoSender::Pause() {
+  previous_sending_bitrate_ = TargetBitrateKbps();
+  PacketSender::Pause();
+}
+
+void VideoSender::Resume(int64_t paused_time_ms) {
+  source_->SetBitrateBps(previous_sending_bitrate_);
+  PacketSender::Resume(paused_time_ms);
 }
 
 void VideoSender::RunFor(int64_t time_ms, Packets* in_out) {
@@ -109,16 +146,7 @@ void VideoSender::OnNetworkChanged(uint32_t target_bitrate_bps,
                                    uint8_t fraction_lost,
                                    int64_t rtt) {
   source_->SetBitrateBps(target_bitrate_bps);
-}
-
-void VideoSender::Pause() {
-  running_ = false;
-  previous_sending_bitrate_ = TargetBitrateKbps();
-}
-
-void VideoSender::Resume() {
-  running_ = true;
-  source_->SetBitrateBps(previous_sending_bitrate_);
+  RecordBitrate();
 }
 
 uint32_t VideoSender::TargetBitrateKbps() {
@@ -243,6 +271,8 @@ void PacedVideoSender::QueuePackets(Packets* batch,
   }
   Packets to_transfer;
   to_transfer.splice(to_transfer.begin(), queue_, queue_.begin(), it);
+  for (Packet* packet : to_transfer)
+    packet->set_paced(true);
   bwe_->OnPacketsSent(to_transfer);
   batch->merge(to_transfer, DereferencingComparator<Packet>);
 }
@@ -309,7 +339,6 @@ TcpSender::TcpSender(PacketProcessorListener* listener,
       last_rtt_ms_(0),
       total_sent_bytes_(0),
       send_limit_bytes_(send_limit_bytes),
-      running_(true),
       last_generated_packets_ms_(0),
       num_recent_sent_packets_(0),
       bitrate_kbps_(0) {
@@ -319,18 +348,16 @@ void TcpSender::RunFor(int64_t time_ms, Packets* in_out) {
   if (clock_.TimeInMilliseconds() + time_ms < offset_ms_) {
     clock_.AdvanceTimeMilliseconds(time_ms);
     if (running_) {
-      running_ = false;
+      Pause();
     }
     return;
   }
 
-  if (!running_) {
-    running_ = true;
+  if (!running_ && total_sent_bytes_ == 0) {
+    Resume(offset_ms_);
   }
 
   int64_t start_time_ms = clock_.TimeInMilliseconds();
-  BWE_TEST_LOGGING_CONTEXT("Sender");
-  BWE_TEST_LOGGING_CONTEXT(*flow_ids().begin());
 
   std::list<FeedbackPacket*> feedbacks = GetFeedbackPackets(
       in_out, clock_.TimeInMilliseconds() + time_ms, *flow_ids().begin());
@@ -375,7 +402,7 @@ void TcpSender::SendPackets(Packets* in_out) {
 
 void TcpSender::UpdateCongestionControl(const FeedbackPacket* fb) {
   const TcpFeedback* tcp_fb = static_cast<const TcpFeedback*>(fb);
-  DCHECK(!tcp_fb->acked_packets().empty());
+  RTC_DCHECK(!tcp_fb->acked_packets().empty());
   ack_received_ = true;
 
   uint16_t expected = tcp_fb->acked_packets().back() - last_acked_seq_num_;
@@ -426,7 +453,7 @@ Packets TcpSender::GeneratePackets(size_t num_packets) {
   for (size_t i = 0; i < num_packets; ++i) {
     if ((total_sent_bytes_ + kPacketSizeBytes) > send_limit_bytes_) {
       if (running_) {
-        running_ = false;
+        Pause();
       }
       break;
     }
@@ -454,6 +481,8 @@ void TcpSender::UpdateSendBitrateEstimate(size_t num_packets) {
     last_generated_packets_ms_ = clock_.TimeInMilliseconds();
     num_recent_sent_packets_ = 0;
   }
+
+  RecordBitrate();
 }
 
 uint32_t TcpSender::TargetBitrateKbps() {

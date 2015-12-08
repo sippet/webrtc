@@ -36,7 +36,7 @@ struct ReceiveBandwidthEstimatorStats;
 
 class ViEReceiver : public RtpData {
  public:
-  ViEReceiver(const int32_t channel_id, VideoCodingModule* module_vcm,
+  ViEReceiver(VideoCodingModule* module_vcm,
               RemoteBitrateEstimator* remote_bitrate_estimator,
               RtpFeedback* rtp_feedback);
   ~ViEReceiver();
@@ -63,6 +63,7 @@ class ViEReceiver : public RtpData {
   bool SetReceiveTimestampOffsetStatus(bool enable, int id);
   bool SetReceiveAbsoluteSendTimeStatus(bool enable, int id);
   bool SetReceiveVideoRotationStatus(bool enable, int id);
+  bool SetReceiveTransportSequenceNumber(bool enable, int id);
 
   void StartReceive();
   void StopReceive();
@@ -116,6 +117,7 @@ class ViEReceiver : public RtpData {
   bool restored_packet_in_use_;
   bool receiving_ast_enabled_;
   bool receiving_cvo_enabled_;
+  bool receiving_tsn_enabled_;
   int64_t last_packet_log_ms_;
 };
 

@@ -11,16 +11,20 @@
 #ifndef WEBRTC_MODULES_REMOTE_BITRATE_ESTIMATOR_TEST_METRIC_RECORDER_H_
 #define WEBRTC_MODULES_REMOTE_BITRATE_ESTIMATOR_TEST_METRIC_RECORDER_H_
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "webrtc/base/common.h"
-#include "webrtc/modules/remote_bitrate_estimator/test/packet_sender.h"
+#include "webrtc/test/testsupport/gtest_prod_util.h"
 
 namespace webrtc {
 namespace testing {
 namespace bwe {
+
+class ChokeFilter;
+class PacketSender;
 
 class LinkShare {
  public:
@@ -65,7 +69,9 @@ class MetricRecorder {
                  PacketSender* packet_sender,
                  LinkShare* link_share);
 
-  void SetPlotInformation(const std::vector<std::string>& prefixes);
+  void SetPlotInformation(const std::vector<std::string>& prefixes,
+                          bool plot_delay,
+                          bool plot_loss);
 
   template <typename T>
   void PlotLine(int windows_id,
@@ -76,9 +82,10 @@ class MetricRecorder {
   void PlotDynamics(int metric);
   void PlotAllDynamics();
 
-  void UpdateTime(int64_t time_ms);
+  void UpdateTimeMs(int64_t time_ms);
   void UpdateThroughput(int64_t bitrate_kbps, size_t payload_size);
-  void UpdateDelay(int64_t delay_ms);
+  void UpdateSendingEstimateKbps(int64_t bitrate_kbps);
+  void UpdateDelayMs(int64_t delay_ms);
   void UpdateLoss(float loss_ratio);
   void UpdateObjective();
 
@@ -86,26 +93,26 @@ class MetricRecorder {
                                const std::string& bwe_name,
                                size_t num_flows,
                                int64_t extra_offset_ms,
-                               const std::string optimum_id);
+                               const std::string optimum_id) const;
 
   void PlotThroughputHistogram(const std::string& title,
                                const std::string& bwe_name,
                                size_t num_flows,
-                               int64_t extra_offset_ms);
+                               int64_t extra_offset_ms) const;
 
   void PlotDelayHistogram(const std::string& title,
                           const std::string& bwe_name,
                           size_t num_flows,
-                          int64_t one_way_path_delay_ms);
+                          int64_t one_way_path_delay_ms) const;
 
   void PlotLossHistogram(const std::string& title,
                          const std::string& bwe_name,
                          size_t num_flows,
-                         float global_loss_ratio);
+                         float global_loss_ratio) const;
 
   void PlotObjectiveHistogram(const std::string& title,
                               const std::string& bwe_name,
-                              size_t num_flows);
+                              size_t num_flows) const;
 
   void set_start_computing_metrics_ms(int64_t start_computing_metrics_ms) {
     start_computing_metrics_ms_ = start_computing_metrics_ms;
@@ -120,19 +127,30 @@ class MetricRecorder {
   void PlotZero();
 
  private:
+  FRIEND_TEST_ALL_PREFIXES(MetricRecorderTest, NoPackets);
+  FRIEND_TEST_ALL_PREFIXES(MetricRecorderTest, RegularPackets);
+  FRIEND_TEST_ALL_PREFIXES(MetricRecorderTest, VariableDelayPackets);
+
   uint32_t GetTotalAvailableKbps();
   uint32_t GetAvailablePerFlowKbps();
   uint32_t GetSendingEstimateKbps();
-  double ObjectiveFunction();
+  double ObjectiveFunction() const;
 
-  double Renormalize(double x);
+  double Renormalize(double x) const;
   bool ShouldRecord(int64_t arrival_time_ms);
 
   void PushDelayMs(int64_t delay_ms, int64_t arrival_time_ms);
   void PushThroughputBytes(size_t throughput_bytes, int64_t arrival_time_ms);
 
+  void UpdateEstimateError(int64_t new_value);
+  double DelayStdDev() const;
+  int64_t NthDelayPercentile(int n) const;
+  double AverageBitrateKbps(int64_t extra_offset_ms) const;
+  int64_t RunDurationMs(int64_t extra_offset_ms) const;
+
   enum Metrics {
     kThroughput = 0,
+    kSendingEstimate,
     kDelay,
     kLoss,
     kObjective,
@@ -143,22 +161,26 @@ class MetricRecorder {
 
   std::string algorithm_name_;
   int flow_id_;
-  PacketSender* packet_sender_;
   LinkShare* link_share_;
 
   int64_t now_ms_;
 
   PlotInformation plot_information_[kNumMetrics];
 
-  std::vector<int64_t> delays_ms_;
-  std::vector<size_t> throughput_bytes_;
-  // (Receiving rate - available bitrate per flow) * time window.
-  std::vector<int64_t> weighted_estimate_error_;
+  int64_t sum_delays_ms_;
+  // delay_histogram_ms_[i] counts how many packets have delay = i ms.
+  std::map<int64_t, size_t> delay_histogram_ms_;
+  int64_t sum_delays_square_ms2_;  // Used to compute standard deviation.
+  size_t sum_throughput_bytes_;
+  // ((Receiving rate - available bitrate per flow) * time window)^p.
+  // 0 for negative values, 1 for positive values.
+  int64_t sum_lp_weighted_estimate_error_[2];
   int64_t last_unweighted_estimate_error_;
   int64_t optimal_throughput_bits_;
   int64_t last_available_bitrate_per_flow_kbps_;
   int64_t start_computing_metrics_ms_;
   bool started_computing_metrics_;
+  size_t num_packets_received_;
 };
 
 }  // namespace bwe

@@ -19,6 +19,8 @@
 #include "webrtc/base/criticalsection.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/bitrate_controller/include/bitrate_controller.h"
+#include "webrtc/video_receive_stream.h"
+#include "webrtc/video_send_stream.h"
 
 namespace webrtc {
 
@@ -26,10 +28,14 @@ class BitrateAllocator;
 class CallStats;
 class Config;
 class EncoderStateFeedback;
+class I420FrameCallback;
 class PacedSender;
 class PacketRouter;
 class ProcessThread;
 class RemoteBitrateEstimator;
+class RemoteEstimatorProxy;
+class SendStatisticsProxy;
+class TransportFeedbackAdapter;
 class ViEChannel;
 class ViEEncoder;
 class VieRemb;
@@ -44,18 +50,22 @@ class ChannelGroup : public BitrateObserver {
   explicit ChannelGroup(ProcessThread* process_thread);
   ~ChannelGroup();
   bool CreateSendChannel(int channel_id,
-                         int engine_id,
                          Transport* transport,
+                         SendStatisticsProxy* stats_proxy,
+                         I420FrameCallback* pre_encode_callback,
                          int number_of_cores,
-                         const std::vector<uint32_t>& ssrcs);
+                         const VideoSendStream::Config& config);
   bool CreateReceiveChannel(int channel_id,
-                            int engine_id,
                             Transport* transport,
-                            int number_of_cores);
+                            int number_of_cores,
+                            const VideoReceiveStream::Config& config);
   void DeleteChannel(int channel_id);
   ViEChannel* GetChannel(int channel_id) const;
   ViEEncoder* GetEncoder(int channel_id) const;
   void SetSyncInterface(VoEVideoSync* sync_interface);
+  void SetBweBitrates(int min_bitrate_bps,
+                      int start_bitrate_bps,
+                      int max_bitrate_bps);
 
   void SetChannelRembStatus(bool sender, bool receiver, ViEChannel* channel);
 
@@ -75,33 +85,35 @@ class ChannelGroup : public BitrateObserver {
   typedef std::map<int, ViEEncoder*> EncoderMap;
 
   bool CreateChannel(int channel_id,
-                     int engine_id,
                      Transport* transport,
                      int number_of_cores,
                      ViEEncoder* vie_encoder,
                      size_t max_rtp_streams,
-                     bool sender);
+                     bool sender,
+                     RemoteBitrateEstimator* bitrate_estimator,
+                     TransportFeedbackObserver* feedback_observer);
   ViEChannel* PopChannel(int channel_id);
 
   rtc::scoped_ptr<VieRemb> remb_;
   rtc::scoped_ptr<BitrateAllocator> bitrate_allocator_;
   rtc::scoped_ptr<CallStats> call_stats_;
-  rtc::scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
-  rtc::scoped_ptr<EncoderStateFeedback> encoder_state_feedback_;
   rtc::scoped_ptr<PacketRouter> packet_router_;
   rtc::scoped_ptr<PacedSender> pacer_;
+  rtc::scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
+  rtc::scoped_ptr<RemoteEstimatorProxy> remote_estimator_proxy_;
+  rtc::scoped_ptr<EncoderStateFeedback> encoder_state_feedback_;
   ChannelMap channel_map_;
   // Maps Channel id -> ViEEncoder.
   mutable rtc::CriticalSection encoder_map_crit_;
   EncoderMap vie_encoder_map_ GUARDED_BY(encoder_map_crit_);
 
-  const rtc::scoped_ptr<Config> config_;
-
   // Registered at construct time and assumed to outlive this class.
-  ProcessThread* process_thread_;
+  ProcessThread* const process_thread_;
   rtc::scoped_ptr<ProcessThread> pacer_thread_;
 
   rtc::scoped_ptr<BitrateController> bitrate_controller_;
+  rtc::scoped_ptr<TransportFeedbackAdapter> transport_feedback_adapter_;
+  int min_bitrate_bps_;
 };
 
 }  // namespace webrtc

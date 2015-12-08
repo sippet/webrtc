@@ -44,7 +44,7 @@ class DelayCapHelper {
   int64_t max_delay_us_;
   Stats<double> delay_stats_;
 
-  DISALLOW_COPY_AND_ASSIGN(DelayCapHelper);
+  RTC_DISALLOW_COPY_AND_ASSIGN(DelayCapHelper);
 };
 
 const FlowIds CreateFlowIds(const int *flow_ids_array, size_t num_flow_ids) {
@@ -132,7 +132,8 @@ Packet::Packet()
       creation_time_us_(-1),
       send_time_us_(-1),
       sender_timestamp_us_(-1),
-      payload_size_(0) {
+      payload_size_(0),
+      paced_(false) {
 }
 
 Packet::Packet(int flow_id, int64_t send_time_us, size_t payload_size)
@@ -140,7 +141,8 @@ Packet::Packet(int flow_id, int64_t send_time_us, size_t payload_size)
       creation_time_us_(send_time_us),
       send_time_us_(send_time_us),
       sender_timestamp_us_(send_time_us),
-      payload_size_(payload_size) {
+      payload_size_(payload_size),
+      paced_(false) {
 }
 
 Packet::~Packet() {
@@ -251,12 +253,13 @@ uint32_t PacketProcessor::bits_per_second() const {
 
 RateCounterFilter::RateCounterFilter(PacketProcessorListener* listener,
                                      int flow_id,
-                                     const char* name)
+                                     const char* name,
+                                     const std::string& plot_name)
     : PacketProcessor(listener, flow_id, kRegular),
       packets_per_second_stats_(),
       kbps_stats_(),
-      name_(),
-      start_plotting_time_ms_(0) {
+      start_plotting_time_ms_(0),
+      plot_name_(plot_name) {
   std::stringstream ss;
   ss << name << "_" << flow_id;
   name_ = ss.str();
@@ -264,16 +267,19 @@ RateCounterFilter::RateCounterFilter(PacketProcessorListener* listener,
 
 RateCounterFilter::RateCounterFilter(PacketProcessorListener* listener,
                                      const FlowIds& flow_ids,
-                                     const char* name)
+                                     const char* name,
+                                     const std::string& plot_name)
     : PacketProcessor(listener, flow_ids, kRegular),
       packets_per_second_stats_(),
       kbps_stats_(),
-      name_(),
-      start_plotting_time_ms_(0) {
+      start_plotting_time_ms_(0),
+      plot_name_(plot_name) {
   std::stringstream ss;
-  ss << name << "_";
+  ss << name;
+  char delimiter = '_';
   for (int flow_id : flow_ids) {
-    ss << flow_id << ",";
+    ss << delimiter << flow_id;
+    delimiter = ',';
   }
   name_ = ss.str();
 }
@@ -281,8 +287,9 @@ RateCounterFilter::RateCounterFilter(PacketProcessorListener* listener,
 RateCounterFilter::RateCounterFilter(PacketProcessorListener* listener,
                                      const FlowIds& flow_ids,
                                      const char* name,
-                                     int64_t start_plotting_time_ms)
-    : RateCounterFilter(listener, flow_ids, name) {
+                                     int64_t start_plotting_time_ms,
+                                     const std::string& plot_name)
+    : RateCounterFilter(listener, flow_ids, name, plot_name) {
   start_plotting_time_ms_ = start_plotting_time_ms;
 }
 
@@ -307,7 +314,13 @@ void RateCounterFilter::Plot(int64_t timestamp_ms) {
     plot_kbps = rate_counter_.bits_per_second() / 1000.0;
   }
   BWE_TEST_LOGGING_CONTEXT(name_.c_str());
-  BWE_TEST_LOGGING_PLOT(0, "Throughput_#1", timestamp_ms, plot_kbps);
+  if (plot_name_.empty()) {
+    BWE_TEST_LOGGING_PLOT(0, "Throughput_kbps#1", timestamp_ms, plot_kbps);
+  } else {
+    BWE_TEST_LOGGING_PLOT_WITH_NAME(0, "Throughput_kbps#1", timestamp_ms,
+                                    plot_kbps, plot_name_);
+  }
+
   RTC_UNUSED(plot_kbps);
 }
 
@@ -706,8 +719,7 @@ VideoSource::VideoSource(int flow_id,
       next_frame_ms_(first_frame_offset_ms),
       next_frame_rand_ms_(0),
       now_ms_(0),
-      prototype_header_(),
-      start_plotting_ms_(first_frame_offset_ms) {
+      prototype_header_() {
   memset(&prototype_header_, 0, sizeof(prototype_header_));
   prototype_header_.ssrc = ssrc;
   prototype_header_.sequenceNumber = 0xf000u;

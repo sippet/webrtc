@@ -15,6 +15,7 @@
 #include <stdio.h>  // FILE
 #include <vector>
 
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/platform_file.h"
 #include "webrtc/common.h"
 #include "webrtc/modules/audio_processing/beamformer/array_util.h"
@@ -116,16 +117,17 @@ struct Beamforming {
   const std::vector<Point> array_geometry;
 };
 
-// Use to enable 48kHz support in audio processing. Must be provided through the
-// constructor. It will have no impact if used with
+// Use to enable intelligibility enhancer in audio processing. Must be provided
+// though the constructor. It will have no impact if used with
 // AudioProcessing::SetExtraOptions().
-struct AudioProcessing48kHzSupport {
-  AudioProcessing48kHzSupport() : enabled(true) {}
-  explicit AudioProcessing48kHzSupport(bool enabled) : enabled(enabled) {}
+//
+// Note: If enabled and the reverse stream has more than one output channel,
+// the reverse stream will become an upmixed mono signal.
+struct Intelligibility {
+  Intelligibility() : enabled(false) {}
+  explicit Intelligibility(bool enabled) : enabled(enabled) {}
   bool enabled;
 };
-
-static const int kAudioProcMaxNativeSampleRateHz = 32000;
 
 // The Audio Processing Module (APM) provides a collection of voice processing
 // components designed for real-time communications software.
@@ -262,15 +264,6 @@ class AudioProcessing {
   // ensures the options are applied immediately.
   virtual void SetExtraOptions(const Config& config) = 0;
 
-  // DEPRECATED.
-  // TODO(ajm): Remove after Chromium has upgraded to using Initialize().
-  virtual int set_sample_rate_hz(int rate) = 0;
-  // TODO(ajm): Remove after voice engine no longer requires it to resample
-  // the reverse stream to the forward rate.
-  virtual int input_sample_rate_hz() const = 0;
-  // TODO(ajm): Remove after Chromium no longer depends on it.
-  virtual int sample_rate_hz() const = 0;
-
   // TODO(ajm): Only intended for internal use. Make private and friend the
   // necessary classes?
   virtual int proc_sample_rate_hz() const = 0;
@@ -284,7 +277,6 @@ class AudioProcessing {
   // but some components may change behavior based on this information.
   // Default false.
   virtual void set_output_will_be_muted(bool muted) = 0;
-  virtual bool output_will_be_muted() const = 0;
 
   // Processes a 10 ms |frame| of the primary audio stream. On the client-side,
   // this is the near-end (or captured) audio.
@@ -308,7 +300,7 @@ class AudioProcessing {
   //
   // TODO(mgraczyk): Remove once clients are updated to use the new interface.
   virtual int ProcessStream(const float* const* src,
-                            int samples_per_channel,
+                            size_t samples_per_channel,
                             int input_sample_rate_hz,
                             ChannelLayout input_layout,
                             int output_sample_rate_hz,
@@ -342,21 +334,28 @@ class AudioProcessing {
   // |input_sample_rate_hz()|
   //
   // TODO(ajm): add const to input; requires an implementation fix.
+  // DEPRECATED: Use |ProcessReverseStream| instead.
+  // TODO(ekm): Remove once all users have updated to |ProcessReverseStream|.
   virtual int AnalyzeReverseStream(AudioFrame* frame) = 0;
+
+  // Same as |AnalyzeReverseStream|, but may modify |frame| if intelligibility
+  // is enabled.
+  virtual int ProcessReverseStream(AudioFrame* frame) = 0;
 
   // Accepts deinterleaved float audio with the range [-1, 1]. Each element
   // of |data| points to a channel buffer, arranged according to |layout|.
-  //
   // TODO(mgraczyk): Remove once clients are updated to use the new interface.
   virtual int AnalyzeReverseStream(const float* const* data,
-                                   int samples_per_channel,
-                                   int sample_rate_hz,
+                                   size_t samples_per_channel,
+                                   int rev_sample_rate_hz,
                                    ChannelLayout layout) = 0;
 
   // Accepts deinterleaved float audio with the range [-1, 1]. Each element of
   // |data| points to a channel buffer, arranged according to |reverse_config|.
-  virtual int AnalyzeReverseStream(const float* const* data,
-                                   const StreamConfig& reverse_config) = 0;
+  virtual int ProcessReverseStream(const float* const* src,
+                                   const StreamConfig& reverse_input_config,
+                                   const StreamConfig& reverse_output_config,
+                                   float* const* dest) = 0;
 
   // This must be called if and only if echo processing is enabled.
   //
@@ -378,7 +377,6 @@ class AudioProcessing {
   // Call to signal that a key press occurred (true) or did not occur (false)
   // with this chunk of audio.
   virtual void set_stream_key_pressed(bool key_pressed) = 0;
-  virtual bool stream_key_pressed() const = 0;
 
   // Sets a delay |offset| in ms to add to the values passed in through
   // set_stream_delay_ms(). May be positive or negative.
@@ -461,6 +459,11 @@ class AudioProcessing {
     kSampleRate48kHz = 48000
   };
 
+  static const int kNativeSampleRatesHz[];
+  static const size_t kNumNativeSampleRates;
+  static const int kMaxNativeSampleRateHz;
+  static const int kMaxAECMSampleRateHz;
+
   static const int kChunkSizeMs = 10;
 };
 
@@ -500,7 +503,8 @@ class StreamConfig {
   int num_channels() const { return num_channels_; }
 
   bool has_keyboard() const { return has_keyboard_; }
-  int num_frames() const { return num_frames_; }
+  size_t num_frames() const { return num_frames_; }
+  size_t num_samples() const { return num_channels_ * num_frames_; }
 
   bool operator==(const StreamConfig& other) const {
     return sample_rate_hz_ == other.sample_rate_hz_ &&
@@ -511,14 +515,15 @@ class StreamConfig {
   bool operator!=(const StreamConfig& other) const { return !(*this == other); }
 
  private:
-  static int calculate_frames(int sample_rate_hz) {
-    return AudioProcessing::kChunkSizeMs * sample_rate_hz / 1000;
+  static size_t calculate_frames(int sample_rate_hz) {
+    return static_cast<size_t>(
+        AudioProcessing::kChunkSizeMs * sample_rate_hz / 1000);
   }
 
   int sample_rate_hz_;
   int num_channels_;
   bool has_keyboard_;
-  int num_frames_;
+  size_t num_frames_;
 };
 
 class ProcessingConfig {
@@ -526,7 +531,8 @@ class ProcessingConfig {
   enum StreamName {
     kInputStream,
     kOutputStream,
-    kReverseStream,
+    kReverseInputStream,
+    kReverseOutputStream,
     kNumStreamNames,
   };
 
@@ -536,13 +542,21 @@ class ProcessingConfig {
   const StreamConfig& output_stream() const {
     return streams[StreamName::kOutputStream];
   }
-  const StreamConfig& reverse_stream() const {
-    return streams[StreamName::kReverseStream];
+  const StreamConfig& reverse_input_stream() const {
+    return streams[StreamName::kReverseInputStream];
+  }
+  const StreamConfig& reverse_output_stream() const {
+    return streams[StreamName::kReverseOutputStream];
   }
 
   StreamConfig& input_stream() { return streams[StreamName::kInputStream]; }
   StreamConfig& output_stream() { return streams[StreamName::kOutputStream]; }
-  StreamConfig& reverse_stream() { return streams[StreamName::kReverseStream]; }
+  StreamConfig& reverse_input_stream() {
+    return streams[StreamName::kReverseInputStream];
+  }
+  StreamConfig& reverse_output_stream() {
+    return streams[StreamName::kReverseOutputStream];
+  }
 
   bool operator==(const ProcessingConfig& other) const {
     for (int i = 0; i < StreamName::kNumStreamNames; ++i) {

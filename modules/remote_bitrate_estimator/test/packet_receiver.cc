@@ -32,34 +32,30 @@ PacketReceiver::PacketReceiver(PacketProcessorListener* listener,
                                MetricRecorder* metric_recorder)
     : PacketProcessor(listener, flow_id, kReceiver),
       bwe_receiver_(CreateBweReceiver(bwe_type, flow_id, plot_bwe)),
-      metric_recorder_(metric_recorder) {
+      metric_recorder_(metric_recorder),
+      plot_delay_(plot_delay),
+      last_delay_plot_ms_(0),
+      // #2 aligns the plot with the right axis.
+      delay_prefix_("Delay_ms#2"),
+      bwe_type_(bwe_type) {
   if (metric_recorder_ != nullptr) {
-    // Setup the prefix ststd::rings used when logging.
+    // Setup the prefix std::strings used when logging.
     std::vector<std::string> prefixes;
 
-    std::stringstream ss1;
-    ss1 << "Throughput_kbps_" << flow_id << "#2";
-    prefixes.push_back(ss1.str());  // Throughput.
-
-    std::stringstream ss2;
-    ss2 << "Delay_ms_" << flow_id << "#2";
-    prefixes.push_back(ss2.str());  // Delay.
-
-    std::stringstream ss3;
-    ss3 << "Packet_Loss_" << flow_id << "#2";
-    prefixes.push_back(ss3.str());  // Loss.
-
-    std::stringstream ss4;
-    ss4 << "Objective_function_" << flow_id << "#2";
-    prefixes.push_back(ss4.str());  // Objective.
+    // Metric recorder plots them in separated figures,
+    // alignment will take place with the #1 left axis.
+    prefixes.push_back("Throughput_kbps#1");
+    prefixes.push_back("Sending_Estimate_kbps#1");
+    prefixes.push_back("Delay_ms_#1");
+    prefixes.push_back("Packet_Loss_#1");
+    prefixes.push_back("Objective_function_#1");
 
     // Plot Total/PerFlow Available capacity together with throughputs.
-    std::stringstream ss5;
-    ss5 << "Throughput_kbps" << flow_id << "#1";
-    prefixes.push_back(ss5.str());  // Total Available.
-    prefixes.push_back(ss5.str());  // Available per flow.
+    prefixes.push_back("Throughput_kbps#1");  // Total Available.
+    prefixes.push_back("Throughput_kbps#1");  // Available per flow.
 
-    metric_recorder_->SetPlotInformation(prefixes);
+    bool plot_loss = plot_delay;  // Plot loss if delay is plotted.
+    metric_recorder_->SetPlotInformation(prefixes, plot_delay, plot_loss);
   }
 }
 
@@ -98,10 +94,12 @@ void PacketReceiver::RunFor(int64_t time_ms, Packets* in_out) {
       delay_stats_.Push(arrival_time_ms - send_time_ms);
 
       if (metric_recorder_ != nullptr) {
-        metric_recorder_->UpdateTime(arrival_time_ms);
+        metric_recorder_->UpdateTimeMs(arrival_time_ms);
         UpdateMetrics(arrival_time_ms, send_time_ms,
                       media_packet->payload_size());
         metric_recorder_->PlotAllDynamics();
+      } else if (plot_delay_) {
+        PlotDelay(arrival_time_ms, send_time_ms);
       }
 
       bwe_receiver_->ReceivePacket(arrival_time_ms, *media_packet);
@@ -122,9 +120,19 @@ void PacketReceiver::UpdateMetrics(int64_t arrival_time_ms,
                                    int64_t send_time_ms,
                                    size_t payload_size) {
   metric_recorder_->UpdateThroughput(bwe_receiver_->RecentKbps(), payload_size);
-  metric_recorder_->UpdateDelay(arrival_time_ms - send_time_ms);
+  metric_recorder_->UpdateDelayMs(arrival_time_ms - send_time_ms);
   metric_recorder_->UpdateLoss(bwe_receiver_->RecentPacketLossRatio());
   metric_recorder_->UpdateObjective();
+}
+
+void PacketReceiver::PlotDelay(int64_t arrival_time_ms, int64_t send_time_ms) {
+  const int64_t kDelayPlotIntervalMs = 100;
+  if (arrival_time_ms >= last_delay_plot_ms_ + kDelayPlotIntervalMs) {
+    BWE_TEST_LOGGING_PLOT_WITH_NAME(0, delay_prefix_, arrival_time_ms,
+                                    arrival_time_ms - send_time_ms,
+                                    bwe_names[bwe_type_]);
+    last_delay_plot_ms_ = arrival_time_ms;
+  }
 }
 
 float PacketReceiver::GlobalPacketLoss() {
