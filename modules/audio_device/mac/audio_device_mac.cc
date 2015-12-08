@@ -10,12 +10,12 @@
 
 #include "webrtc/base/arraysize.h"
 #include "webrtc/base/checks.h"
+#include "webrtc/base/platform_thread.h"
 #include "webrtc/modules/audio_device/audio_device_config.h"
 #include "webrtc/modules/audio_device/mac/audio_device_mac.h"
 #include "webrtc/modules/audio_device/mac/portaudio/pa_ringbuffer.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
-#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/trace.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <libkern/OSAtomic.h>   // OSAtomicCompareAndSwap()
@@ -1665,11 +1665,11 @@ int32_t AudioDeviceMac::StartRecording()
     }
 
     RTC_DCHECK(!capture_worker_thread_.get());
-    capture_worker_thread_ =
-        ThreadWrapper::CreateThread(RunCapture, this, "CaptureWorkerThread");
+    capture_worker_thread_.reset(
+        new rtc::PlatformThread(RunCapture, this, "CaptureWorkerThread"));
     RTC_DCHECK(capture_worker_thread_.get());
     capture_worker_thread_->Start();
-    capture_worker_thread_->SetPriority(kRealtimePriority);
+    capture_worker_thread_->SetPriority(rtc::kRealtimePriority);
 
     OSStatus err = noErr;
     if (_twoDevices)
@@ -1820,10 +1820,10 @@ int32_t AudioDeviceMac::StartPlayout()
     }
 
     RTC_DCHECK(!render_worker_thread_.get());
-    render_worker_thread_ =
-        ThreadWrapper::CreateThread(RunRender, this, "RenderWorkerThread");
+    render_worker_thread_.reset(
+        new rtc::PlatformThread(RunRender, this, "RenderWorkerThread"));
     render_worker_thread_->Start();
-    render_worker_thread_->SetPriority(kRealtimePriority);
+    render_worker_thread_->SetPriority(rtc::kRealtimePriority);
 
     if (_twoDevices || !_recording)
     {

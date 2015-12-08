@@ -8,13 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "webrtc/modules/audio_coding/codecs/g711/include/audio_encoder_pcm.h"
+#include "webrtc/modules/audio_coding/codecs/g711/audio_encoder_pcm.h"
 
 #include <limits>
 
 #include "webrtc/base/checks.h"
 #include "webrtc/common_types.h"
-#include "webrtc/modules/audio_coding/codecs/g711/include/g711_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g711/g711_interface.h"
 
 namespace webrtc {
 
@@ -88,16 +88,13 @@ int AudioEncoderPcm::GetTargetBitrate() const {
 
 AudioEncoder::EncodedInfo AudioEncoderPcm::EncodeInternal(
     uint32_t rtp_timestamp,
-    const int16_t* audio,
+    rtc::ArrayView<const int16_t> audio,
     size_t max_encoded_bytes,
     uint8_t* encoded) {
-  const int num_samples = SampleRateHz() / 100 * NumChannels();
   if (speech_buffer_.empty()) {
     first_timestamp_in_buffer_ = rtp_timestamp;
   }
-  for (int i = 0; i < num_samples; ++i) {
-    speech_buffer_.push_back(audio[i]);
-  }
+  speech_buffer_.insert(speech_buffer_.end(), audio.begin(), audio.end());
   if (speech_buffer_.size() < full_frame_samples_) {
     return EncodedInfo();
   }

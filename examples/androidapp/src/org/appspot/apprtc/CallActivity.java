@@ -22,7 +22,6 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -67,16 +66,19 @@ public class CallActivity extends Activity
       "org.appspot.apprtc.VIDEOCODEC";
   public static final String EXTRA_HWCODEC_ENABLED =
       "org.appspot.apprtc.HWCODEC";
+  public static final String EXTRA_CAPTURETOTEXTURE_ENABLED =
+      "org.appspot.apprtc.CAPTURETOTEXTURE";
   public static final String EXTRA_AUDIO_BITRATE =
       "org.appspot.apprtc.AUDIO_BITRATE";
   public static final String EXTRA_AUDIOCODEC =
       "org.appspot.apprtc.AUDIOCODEC";
   public static final String EXTRA_NOAUDIOPROCESSING_ENABLED =
       "org.appspot.apprtc.NOAUDIOPROCESSING";
-  public static final String EXTRA_CPUOVERUSE_DETECTION =
-      "org.appspot.apprtc.CPUOVERUSE_DETECTION";
+  public static final String EXTRA_OPENSLES_ENABLED =
+      "org.appspot.apprtc.OPENSLES";
   public static final String EXTRA_DISPLAY_HUD =
       "org.appspot.apprtc.DISPLAY_HUD";
+  public static final String EXTRA_TRACING = "org.appspot.apprtc.TRACING";
   public static final String EXTRA_CMDLINE =
       "org.appspot.apprtc.CMDLINE";
   public static final String EXTRA_RUNTIME =
@@ -212,19 +214,22 @@ public class CallActivity extends Activity
       return;
     }
     boolean loopback = intent.getBooleanExtra(EXTRA_LOOPBACK, false);
+    boolean tracing = intent.getBooleanExtra(EXTRA_TRACING, false);
     peerConnectionParameters = new PeerConnectionParameters(
         intent.getBooleanExtra(EXTRA_VIDEO_CALL, true),
         loopback,
+        tracing,
         intent.getIntExtra(EXTRA_VIDEO_WIDTH, 0),
         intent.getIntExtra(EXTRA_VIDEO_HEIGHT, 0),
         intent.getIntExtra(EXTRA_VIDEO_FPS, 0),
         intent.getIntExtra(EXTRA_VIDEO_BITRATE, 0),
         intent.getStringExtra(EXTRA_VIDEOCODEC),
         intent.getBooleanExtra(EXTRA_HWCODEC_ENABLED, true),
+        intent.getBooleanExtra(EXTRA_CAPTURETOTEXTURE_ENABLED, false),
         intent.getIntExtra(EXTRA_AUDIO_BITRATE, 0),
         intent.getStringExtra(EXTRA_AUDIOCODEC),
         intent.getBooleanExtra(EXTRA_NOAUDIOPROCESSING_ENABLED, false),
-        intent.getBooleanExtra(EXTRA_CPUOVERUSE_DETECTION, true));
+        intent.getBooleanExtra(EXTRA_OPENSLES_ENABLED, false));
     commandLineRun = intent.getBooleanExtra(EXTRA_CMDLINE, false);
     runTimeMs = intent.getIntExtra(EXTRA_RUNTIME, 0);
 

@@ -11,20 +11,20 @@
 #include "webrtc/video/video_capture_input.h"
 
 #include "webrtc/base/checks.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/modules/utility/interface/process_thread.h"
-#include "webrtc/modules/video_capture/include/video_capture_factory.h"
-#include "webrtc/modules/video_processing/main/interface/video_processing.h"
-#include "webrtc/modules/video_render/include/video_render_defines.h"
-#include "webrtc/system_wrappers/interface/clock.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/logging.h"
-#include "webrtc/system_wrappers/interface/tick_util.h"
-#include "webrtc/system_wrappers/interface/trace_event.h"
+#include "webrtc/base/logging.h"
+#include "webrtc/base/trace_event.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/modules/utility/include/process_thread.h"
+#include "webrtc/modules/video_capture/video_capture_factory.h"
+#include "webrtc/modules/video_processing/include/video_processing.h"
+#include "webrtc/modules/video_render/video_render_defines.h"
+#include "webrtc/system_wrappers/include/clock.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/tick_util.h"
+#include "webrtc/video/overuse_frame_detector.h"
 #include "webrtc/video/send_statistics_proxy.h"
-#include "webrtc/video_engine/overuse_frame_detector.h"
-#include "webrtc/video_engine/vie_encoder.h"
+#include "webrtc/video/vie_encoder.h"
 
 namespace webrtc {
 
@@ -42,9 +42,7 @@ VideoCaptureInput::VideoCaptureInput(
       local_renderer_(local_renderer),
       stats_proxy_(stats_proxy),
       incoming_frame_cs_(CriticalSectionWrapper::CreateCriticalSection()),
-      encoder_thread_(ThreadWrapper::CreateThread(EncoderThreadFunction,
-                                                  this,
-                                                  "EncoderThread")),
+      encoder_thread_(EncoderThreadFunction, this, "EncoderThread"),
       capture_event_(EventWrapper::Create()),
       stop_(0),
       last_captured_timestamp_(0),
@@ -56,8 +54,8 @@ VideoCaptureInput::VideoCaptureInput(
                                                  overuse_observer,
                                                  stats_proxy)),
       encoding_time_observer_(encoding_time_observer) {
-  encoder_thread_->Start();
-  encoder_thread_->SetPriority(kHighPriority);
+  encoder_thread_.Start();
+  encoder_thread_.SetPriority(rtc::kHighPriority);
   module_process_thread_->RegisterModule(overuse_detector_.get());
 }
 
@@ -67,7 +65,7 @@ VideoCaptureInput::~VideoCaptureInput() {
   // Stop the thread.
   rtc::AtomicOps::ReleaseStore(&stop_, 1);
   capture_event_->Set();
-  encoder_thread_->Stop();
+  encoder_thread_.Stop();
 }
 
 void VideoCaptureInput::IncomingCapturedFrame(const VideoFrame& video_frame) {

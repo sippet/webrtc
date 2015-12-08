@@ -46,15 +46,15 @@
       'type': 'none',
     },
     {
-      'target_name': 'video_engine_core_unittests_apk',
-      'type': 'none',
-    },
-    {
       'target_name': 'video_engine_tests_apk',
       'type': 'none',
     },
     {
       'target_name': 'voice_engine_unittests_apk',
+      'type': 'none',
+    },
+    {
+      'target_name': 'webrtc_nonparallel_tests_apk',
       'type': 'none',
     },
     {

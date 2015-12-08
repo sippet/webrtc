@@ -8,13 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef WEBRTC_VIDEO_ENGINE_TEST_COMMON_FAKE_ENCODER_H_
-#define WEBRTC_VIDEO_ENGINE_TEST_COMMON_FAKE_ENCODER_H_
+#ifndef WEBRTC_TEST_FAKE_ENCODER_H_
+#define WEBRTC_TEST_FAKE_ENCODER_H_
 
 #include <vector>
 
 #include "webrtc/common_types.h"
-#include "webrtc/system_wrappers/interface/clock.h"
+#include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/video_encoder.h"
 
 namespace webrtc {
@@ -33,7 +33,7 @@ class FakeEncoder : public VideoEncoder {
                      size_t max_payload_size) override;
   int32_t Encode(const VideoFrame& input_image,
                  const CodecSpecificInfo* codec_specific_info,
-                 const std::vector<VideoFrameType>* frame_types) override;
+                 const std::vector<FrameType>* frame_types) override;
   int32_t RegisterEncodeCompleteCallback(
       EncodedImageCallback* callback) override;
   int32_t Release() override;
@@ -74,7 +74,7 @@ class DelayedEncoder : public test::FakeEncoder {
 
   int32_t Encode(const VideoFrame& input_image,
                  const CodecSpecificInfo* codec_specific_info,
-                 const std::vector<VideoFrameType>* frame_types) override;
+                 const std::vector<FrameType>* frame_types) override;
 
  private:
   const int delay_ms_;
@@ -82,4 +82,4 @@ class DelayedEncoder : public test::FakeEncoder {
 }  // namespace test
 }  // namespace webrtc
 
-#endif  // WEBRTC_VIDEO_ENGINE_TEST_COMMON_FAKE_ENCODER_H_
+#endif  // WEBRTC_TEST_FAKE_ENCODER_H_

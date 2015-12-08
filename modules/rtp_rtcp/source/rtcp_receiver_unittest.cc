@@ -25,6 +25,11 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_sender.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_rtcp_impl.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_utility.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/app.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/bye.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/extended_jitter_report.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/pli.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/receiver_report.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/transport_feedback.h"
 
 namespace webrtc {
@@ -384,20 +389,20 @@ TEST_F(RtcpReceiverTest, GetRtt) {
 }
 
 TEST_F(RtcpReceiverTest, InjectIjWithNoItem) {
-  rtcp::Ij ij;
+  rtcp::ExtendedJitterReport ij;
   rtc::scoped_ptr<rtcp::RawPacket> packet(ij.Build());
   EXPECT_EQ(0, InjectRtcpPacket(packet->Buffer(), packet->Length()));
   EXPECT_EQ(0U, rtcp_packet_info_.rtcpPacketTypeFlags);
 }
 
 TEST_F(RtcpReceiverTest, InjectIjWithOneItem) {
-  rtcp::Ij ij;
-  ij.WithJitterItem(0x11111111);
+  rtcp::ExtendedJitterReport ij;
+  ij.WithJitter(0x11213141);
 
   rtc::scoped_ptr<rtcp::RawPacket> packet(ij.Build());
   EXPECT_EQ(0, InjectRtcpPacket(packet->Buffer(), packet->Length()));
   EXPECT_EQ(kRtcpTransmissionTimeOffset, rtcp_packet_info_.rtcpPacketTypeFlags);
-  EXPECT_EQ(0x11111111U, rtcp_packet_info_.interArrivalJitter);
+  EXPECT_EQ(0x11213141U, rtcp_packet_info_.interArrivalJitter);
 }
 
 TEST_F(RtcpReceiverTest, InjectAppWithNoData) {
@@ -615,8 +620,7 @@ TEST_F(RtcpReceiverTest, XrVoipPacketNotToUsIgnored) {
 
 TEST_F(RtcpReceiverTest, InjectXrReceiverReferenceTimePacket) {
   rtcp::Rrtr rrtr;
-  rrtr.WithNtpSec(0x10203);
-  rrtr.WithNtpFrac(0x40506);
+  rrtr.WithNtp(NtpTime(0x10203, 0x40506));
   rtcp::Xr xr;
   xr.From(0x2345);
   xr.WithRrtr(&rrtr);
@@ -751,13 +755,12 @@ TEST_F(RtcpReceiverTest, LastReceivedXrReferenceTimeInfoInitiallyFalse) {
 
 TEST_F(RtcpReceiverTest, GetLastReceivedXrReferenceTimeInfo) {
   const uint32_t kSenderSsrc = 0x123456;
-  const uint32_t kNtpSec = 0x10203;
-  const uint32_t kNtpFrac = 0x40506;
-  const uint32_t kNtpMid = RTCPUtility::MidNtp(kNtpSec, kNtpFrac);
+  const NtpTime kNtp(0x10203, 0x40506);
+  const uint32_t kNtpMid =
+      RTCPUtility::MidNtp(kNtp.seconds(), kNtp.fractions());
 
   rtcp::Rrtr rrtr;
-  rrtr.WithNtpSec(kNtpSec);
-  rrtr.WithNtpFrac(kNtpFrac);
+  rrtr.WithNtp(kNtp);
   rtcp::Xr xr;
   xr.From(kSenderSsrc);
   xr.WithRrtr(&rrtr);

@@ -8,14 +8,16 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef WEBRTC_MODULES_VIDEO_CODING_CODECS_INTERFACE_VIDEO_CODEC_INTERFACE_H
-#define WEBRTC_MODULES_VIDEO_CODING_CODECS_INTERFACE_VIDEO_CODEC_INTERFACE_H
+#ifndef WEBRTC_MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODEC_INTERFACE_H_
+#define WEBRTC_MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODEC_INTERFACE_H_
+
+#pragma message("WARNING: video_coding/codecs/interface is DEPRECATED; use video_coding/include")
 
 #include <vector>
 
 #include "webrtc/common_types.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/modules/video_coding/codecs/interface/video_error_codes.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/modules/video_coding/include/video_error_codes.h"
 #include "webrtc/typedefs.h"
 #include "webrtc/video_decoder.h"
 #include "webrtc/video_encoder.h"
@@ -68,6 +70,10 @@ struct CodecSpecificInfoVP9 {
   uint16_t width[kMaxVp9NumberOfSpatialLayers];
   uint16_t height[kMaxVp9NumberOfSpatialLayers];
   GofInfoVP9 gof;
+
+  // Frame reference data.
+  uint8_t num_ref_pics;
+  uint8_t p_diff[kMaxVp9RefPics];
 };
 
 struct CodecSpecificInfoGeneric {
@@ -94,4 +100,4 @@ struct CodecSpecificInfo
 
 }  // namespace webrtc
 
-#endif // WEBRTC_MODULES_VIDEO_CODING_CODECS_INTERFACE_VIDEO_CODEC_INTERFACE_H
+#endif // WEBRTC_MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODEC_INTERFACE_H_

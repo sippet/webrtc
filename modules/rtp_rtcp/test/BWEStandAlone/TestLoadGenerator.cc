@@ -15,9 +15,9 @@
 #include <algorithm>
 
 #include "webrtc/modules/rtp_rtcp/test/BWEStandAlone/TestSenderReceiver.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/tick_util.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/tick_util.h"
 
 
 bool SenderThreadFunction(void *obj)
@@ -76,12 +76,12 @@ int32_t TestLoadGenerator::Start (const char *threadName)
 
     _eventPtr = EventWrapper::Create();
 
-    _genThread = ThreadWrapper::CreateThread(SenderThreadFunction, this,
-                                             threadName);
+    _genThread.reset(
+        new rtc::PlatformThread(SenderThreadFunction, this, threadName));
     _running = true;
 
     _genThread->Start();
-    _genThread->SetPriority(kRealtimePriority);
+    _genThread->SetPriority(rtc::kRealtimePriority);
 
     return 0;
 }

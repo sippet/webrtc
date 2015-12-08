@@ -8,13 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef WEBRTC_MODULES_VIDEO_CODING_CODECS_INTERFACE_MOCK_MOCK_VIDEO_CODEC_INTERFACE_H_
-#define WEBRTC_MODULES_VIDEO_CODING_CODECS_INTERFACE_MOCK_MOCK_VIDEO_CODEC_INTERFACE_H_
+#ifndef WEBRTC_MODULES_VIDEO_CODING_INCLUDE_MOCK_MOCK_VIDEO_CODEC_INTERFACE_H_
+#define WEBRTC_MODULES_VIDEO_CODING_INCLUDE_MOCK_MOCK_VIDEO_CODEC_INTERFACE_H_
+
+#pragma message("WARNING: video_coding/codecs/interface is DEPRECATED; use video_coding/include")
 
 #include <string>
 
 #include "testing/gmock/include/gmock/gmock.h"
-#include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -35,7 +37,7 @@ class MockVideoEncoder : public VideoEncoder {
   MOCK_METHOD3(Encode,
                int32_t(const VideoFrame& inputImage,
                        const CodecSpecificInfo* codecSpecificInfo,
-                       const std::vector<VideoFrameType>* frame_types));
+                       const std::vector<FrameType>* frame_types));
   MOCK_METHOD1(RegisterEncodeCompleteCallback,
                int32_t(EncodedImageCallback* callback));
   MOCK_METHOD0(Release, int32_t());
@@ -43,13 +45,13 @@ class MockVideoEncoder : public VideoEncoder {
   MOCK_METHOD2(SetChannelParameters, int32_t(uint32_t packetLoss, int64_t rtt));
   MOCK_METHOD2(SetRates, int32_t(uint32_t newBitRate, uint32_t frameRate));
   MOCK_METHOD1(SetPeriodicKeyFrames, int32_t(bool enable));
-  MOCK_METHOD2(CodecConfigParameters,
-               int32_t(uint8_t* /*buffer*/, int32_t));
 };
 
 class MockDecodedImageCallback : public DecodedImageCallback {
  public:
   MOCK_METHOD1(Decoded, int32_t(VideoFrame& decodedImage));
+  MOCK_METHOD2(Decoded, int32_t(VideoFrame& decodedImage,
+                                int64_t decode_time_ms));
   MOCK_METHOD1(ReceivedDecodedReferenceFrame,
                int32_t(const uint64_t pictureId));
   MOCK_METHOD1(ReceivedDecodedFrame,
@@ -69,11 +71,9 @@ class MockVideoDecoder : public VideoDecoder {
                int32_t(DecodedImageCallback* callback));
   MOCK_METHOD0(Release, int32_t());
   MOCK_METHOD0(Reset, int32_t());
-  MOCK_METHOD2(SetCodecConfigParameters,
-               int32_t(const uint8_t* /*buffer*/, int32_t));
   MOCK_METHOD0(Copy, VideoDecoder*());
 };
 
 }  // namespace webrtc
 
-#endif  // WEBRTC_MODULES_VIDEO_CODING_CODECS_INTERFACE_MOCK_MOCK_VIDEO_CODEC_INTERFACE_H_
+#endif  // WEBRTC_MODULES_VIDEO_CODING_INCLUDE_MOCK_MOCK_VIDEO_CODEC_INTERFACE_H_

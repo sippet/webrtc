@@ -21,12 +21,10 @@
 
         'conditions': [
           ['build_with_chromium==1', {
-            'build_with_libjingle': 1,
             'webrtc_root%': '<(DEPTH)/third_party/webrtc',
             'apk_tests_path%': '<(DEPTH)/third_party/webrtc/build/apk_tests_noop.gyp',
             'modules_java_gyp_path%': '<(DEPTH)/third_party/webrtc/modules/modules_java_chromium.gyp',
           }, {
-            'build_with_libjingle%': 0,
             'webrtc_root%': '<(DEPTH)/webrtc',
             'apk_tests_path%': '<(DEPTH)/webrtc/build/apk_tests.gyp',
             'modules_java_gyp_path%': '<(DEPTH)/webrtc/modules/modules_java.gyp',
@@ -34,7 +32,6 @@
         ],
       },
       'build_with_chromium%': '<(build_with_chromium)',
-      'build_with_libjingle%': '<(build_with_libjingle)',
       'webrtc_root%': '<(webrtc_root)',
       'apk_tests_path%': '<(apk_tests_path)',
       'modules_java_gyp_path%': '<(modules_java_gyp_path)',
@@ -47,7 +44,6 @@
       'build_with_mozilla%': 0,
     },
     'build_with_chromium%': '<(build_with_chromium)',
-    'build_with_libjingle%': '<(build_with_libjingle)',
     'build_with_mozilla%': '<(build_with_mozilla)',
     'webrtc_root%': '<(webrtc_root)',
     'apk_tests_path%': '<(apk_tests_path)',
@@ -89,7 +85,6 @@
 
     # Disable these to not build components which can be externally provided.
     'build_expat%': 1,
-    'build_icu%': 1,
     'build_json%': 1,
     'build_libjpeg%': 1,
     'build_libvpx%': 1,
@@ -97,7 +92,6 @@
     'build_openmax_dl%': 1,
     'build_opus%': 1,
     'build_ssl%': 1,
-    'build_vp9%': 1,
 
     # Disable by default
     'have_dbus_glib%': 0,
@@ -137,6 +131,10 @@
 
         # Exclude internal ADM since Chromium uses its own IO handling.
         'include_internal_audio_device%': 0,
+
+        # Remove tests for Chromium to avoid slowing down GYP generation.
+        'include_tests%': 0,
+        'restrict_webrtc_logging%': 1,
       }, {  # Settings for the standalone (not-in-Chromium) build.
         # TODO(andrew): For now, disable the Chrome plugins, which causes a
         # flood of chromium-style warnings. Investigate enabling them:
@@ -145,17 +143,11 @@
 
         'include_pulse_audio%': 1,
         'include_internal_audio_device%': 1,
-      }],
-      ['build_with_libjingle==1', {
-        'include_tests%': 0,
-        'restrict_webrtc_logging%': 1,
-      }, {
         'include_tests%': 1,
         'restrict_webrtc_logging%': 0,
       }],
       ['OS=="ios"', {
         'build_libjpeg%': 0,
-        'enable_protobuf%': 0,
       }],
       ['target_arch=="arm" or target_arch=="arm64"', {
         'prefer_fixed_point%': 1,

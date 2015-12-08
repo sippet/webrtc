@@ -16,12 +16,12 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/common_types.h"
-#include "webrtc/modules/rtp_rtcp/interface/receive_statistics.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_payload_registry.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_receiver.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/receive_statistics.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_payload_registry.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_receiver.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/transport.h"
 
 using namespace webrtc;
@@ -105,11 +105,7 @@ class RtxLoopBackTransport : public webrtc::Transport {
     if (ssrc == rtx_ssrc_) count_rtx_ssrc_++;
     uint16_t sequence_number = (ptr[2] << 8) + ptr[3];
     size_t packet_length = len;
-    // TODO(pbos): Figure out why this needs to be initialized. Likely this
-    // is hiding a bug either in test setup or other code.
-    // https://code.google.com/p/webrtc/issues/detail?id=3183
-    uint8_t restored_packet[1500] = {0};
-    uint8_t* restored_packet_ptr = restored_packet;
+    uint8_t restored_packet[1500];
     RTPHeader header;
     rtc::scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
     if (!parser->Parse(ptr, len, &header)) {
@@ -133,25 +129,23 @@ class RtxLoopBackTransport : public webrtc::Transport {
     if (rtp_payload_registry_->IsRtx(header)) {
       // Remove the RTX header and parse the original RTP header.
       EXPECT_TRUE(rtp_payload_registry_->RestoreOriginalPacket(
-          &restored_packet_ptr, ptr, &packet_length, rtp_receiver_->SSRC(),
-          header));
-      if (!parser->Parse(restored_packet_ptr, packet_length, &header)) {
+          restored_packet, ptr, &packet_length, rtp_receiver_->SSRC(), header));
+      if (!parser->Parse(restored_packet, packet_length, &header)) {
         return false;
       }
+      ptr = restored_packet;
     } else {
       rtp_payload_registry_->SetIncomingPayloadType(header);
     }
 
-    restored_packet_ptr += header.headerLength;
-    packet_length -= header.headerLength;
     PayloadUnion payload_specific;
     if (!rtp_payload_registry_->GetPayloadSpecifics(header.payloadType,
                                                     &payload_specific)) {
       return false;
     }
-    if (!rtp_receiver_->IncomingRtpPacket(header, restored_packet_ptr,
-                                          packet_length, payload_specific,
-                                          true)) {
+    if (!rtp_receiver_->IncomingRtpPacket(header, ptr + header.headerLength,
+                                          packet_length - header.headerLength,
+                                          payload_specific, true)) {
       return false;
     }
     return true;

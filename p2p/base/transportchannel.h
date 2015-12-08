@@ -46,9 +46,11 @@ enum TransportChannelState {
 
 // A TransportChannel represents one logical stream of packets that are sent
 // between the two sides of a session.
+// TODO(deadbeef): This interface currently represents the unity of an ICE
+// transport and a DTLS transport. They need to be separated apart.
 class TransportChannel : public sigslot::has_slots<> {
  public:
-  explicit TransportChannel(const std::string& transport_name, int component)
+  TransportChannel(const std::string& transport_name, int component)
       : transport_name_(transport_name),
         component_(component),
         writable_(false),
@@ -72,10 +74,14 @@ class TransportChannel : public sigslot::has_slots<> {
   // a signal is raised.  These states are aggregated by the TransportManager.
   bool writable() const { return writable_; }
   bool receiving() const { return receiving_; }
+  DtlsTransportState dtls_state() const { return dtls_state_; }
   sigslot::signal1<TransportChannel*> SignalWritableState;
   // Emitted when the TransportChannel's ability to send has changed.
   sigslot::signal1<TransportChannel*> SignalReadyToSend;
   sigslot::signal1<TransportChannel*> SignalReceivingState;
+  // Emitted whenever DTLS-SRTP is setup which will require setting up a new
+  // SRTP context.
+  sigslot::signal2<TransportChannel*, DtlsTransportState> SignalDtlsState;
 
   // Attempts to send the given packet.  The return value is < 0 on failure.
   // TODO: Remove the default argument once channel code is updated.
@@ -102,14 +108,17 @@ class TransportChannel : public sigslot::has_slots<> {
   // Default implementation.
   virtual bool GetSslRole(rtc::SSLRole* role) const = 0;
 
-  // Sets up the ciphers to use for DTLS-SRTP.
-  virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers) = 0;
+  // Sets up the ciphers to use for DTLS-SRTP. TODO(guoweis): Make this pure
+  // virtual once all dependencies have implementation.
+  virtual bool SetSrtpCryptoSuites(const std::vector<int>& ciphers);
+
+  // Keep the original one for backward compatibility until all dependencies
+  // move away. TODO(guoweis): Remove this function.
+  virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers);
 
   // Finds out which DTLS-SRTP cipher was negotiated.
   // TODO(guoweis): Remove this once all dependencies implement this.
-  virtual bool GetSrtpCryptoSuite(std::string* cipher) {
-    return false;
-  }
+  virtual bool GetSrtpCryptoSuite(int* cipher) { return false; }
 
   // Finds out which DTLS cipher was negotiated.
   // TODO(guoweis): Remove this once all dependencies implement this.
@@ -134,6 +143,9 @@ class TransportChannel : public sigslot::has_slots<> {
   sigslot::signal5<TransportChannel*, const char*,
                    size_t, const rtc::PacketTime&, int> SignalReadPacket;
 
+  // Signalled each time a packet is sent on this channel.
+  sigslot::signal2<TransportChannel*, const rtc::SentPacket&> SignalSentPacket;
+
   // This signal occurs when there is a change in the way that packets are
   // being routed, i.e. to a different remote location. The candidate
   // indicates where and how we are currently sending media.
@@ -146,14 +158,14 @@ class TransportChannel : public sigslot::has_slots<> {
   std::string ToString() const;
 
  protected:
-  // TODO(honghaiz): Remove this once chromium's unit tests no longer call it.
-  void set_readable(bool readable) { set_receiving(readable); }
-
   // Sets the writable state, signaling if necessary.
   void set_writable(bool writable);
 
   // Sets the receiving state, signaling if necessary.
   void set_receiving(bool receiving);
+
+  // Sets the DTLS state, signaling if necessary.
+  void set_dtls_state(DtlsTransportState state);
 
  private:
   // Used mostly for debugging.
@@ -161,6 +173,7 @@ class TransportChannel : public sigslot::has_slots<> {
   int component_;
   bool writable_;
   bool receiving_;
+  DtlsTransportState dtls_state_ = DTLS_TRANSPORT_NEW;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(TransportChannel);
 };

@@ -12,13 +12,13 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 
-#include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/modules/video_coding/codecs/test/packet_manipulator.h"
 #include "webrtc/modules/video_coding/codecs/test/videoprocessor.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
 #include "webrtc/modules/video_coding/codecs/vp9/include/vp9.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8_common_types.h"
-#include "webrtc/modules/video_coding/main/interface/video_coding.h"
+#include "webrtc/modules/video_coding/include/video_coding.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/frame_reader.h"
 #include "webrtc/test/testsupport/frame_writer.h"
@@ -268,11 +268,11 @@ class VideoProcessorIntegrationTest: public testing::Test {
   }
 
   // For every encoded frame, update the rate control metrics.
-  void UpdateRateControlMetrics(int frame_num, VideoFrameType frame_type) {
+  void UpdateRateControlMetrics(int frame_num, FrameType frame_type) {
     float encoded_size_kbits = processor_->EncodedFrameSize() * 8.0f / 1000.0f;
     // Update layer data.
     // Update rate mismatch relative to per-frame bandwidth for delta frames.
-    if (frame_type == kDeltaFrame) {
+    if (frame_type == kVideoFrameDelta) {
       // TODO(marpan): Should we count dropped (zero size) frames in mismatch?
       sum_frame_size_mismatch_[layer_] += fabs(encoded_size_kbits -
                                                per_frame_bandwidth_[layer_]) /
@@ -450,7 +450,7 @@ class VideoProcessorIntegrationTest: public testing::Test {
     ResetRateControlMetrics(
         rate_profile.frame_index_rate_update[update_index + 1]);
     int frame_number = 0;
-    VideoFrameType frame_type = kDeltaFrame;
+    FrameType frame_type = kVideoFrameDelta;
     while (processor_->ProcessFrame(frame_number) &&
         frame_number < num_frames) {
       // Get the layer index for the frame |frame_number|.
@@ -728,8 +728,8 @@ TEST_F(VideoProcessorIntegrationTest, ProcessNoLossDenoiserOnVP9) {
 }
 
 // Run with no packet loss, at low bitrate.
-// spatial_resize is on, so expect one resize during the sequence,
-// resize happens on delta frame. Expect only one key frame (first frame).
+// spatial_resize is on, for this low bitrate expect one resize in sequence.
+// Resize happens on delta frame. Expect only one key frame (first frame).
 TEST_F(VideoProcessorIntegrationTest, ProcessNoLossSpatialResizeFrameDropVP9) {
   config_.networking_config.packet_loss_probability = 0;
   // Bitrate and frame rate profile.
@@ -746,7 +746,7 @@ TEST_F(VideoProcessorIntegrationTest, ProcessNoLossSpatialResizeFrameDropVP9) {
   SetQualityMetrics(&quality_metrics, 25.0, 13.0, 0.70, 0.40);
   // Metrics for rate control.
   RateControlMetrics rc_metrics[1];
-  SetRateControlMetrics(rc_metrics, 0, 170, 70, 120, 10, 80, 1, 1);
+  SetRateControlMetrics(rc_metrics, 0, 190, 70, 135, 15, 80, 1, 1);
   ProcessFramesAndVerify(quality_metrics,
                          rate_profile,
                          process_settings,

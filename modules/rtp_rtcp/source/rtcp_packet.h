@@ -17,8 +17,10 @@
 #include <vector>
 
 #include "webrtc/base/scoped_ptr.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/report_block.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rrtr.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_utility.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -29,7 +31,6 @@ static const int kReportBlockLength = 24;
 
 class Dlrr;
 class RawPacket;
-class Rrtr;
 class VoipMetric;
 
 // Class for building RTCP packets.
@@ -115,14 +116,13 @@ class RtcpPacket {
   size_t HeaderLength() const;
 
   static const size_t kHeaderLength = 4;
+  std::vector<RtcpPacket*> appended_packets_;
 
  private:
   bool CreateAndAddAppended(uint8_t* packet,
                             size_t* index,
                             size_t max_length,
                             PacketReadyCallback* callback) const;
-
-  std::vector<RtcpPacket*> appended_packets_;
 };
 
 // TODO(sprang): Move RtcpPacket subclasses out to separate files.
@@ -143,63 +143,6 @@ class Empty : public RtcpPacket {
 
  private:
   RTC_DISALLOW_COPY_AND_ASSIGN(Empty);
-};
-
-// From RFC 3550, RTP: A Transport Protocol for Real-Time Applications.
-//
-// RTCP report block (RFC 3550).
-//
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-//  |                 SSRC_1 (SSRC of first source)                 |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  | fraction lost |       cumulative number of packets lost       |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |           extended highest sequence number received           |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                      interarrival jitter                      |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                         last SR (LSR)                         |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                   delay since last SR (DLSR)                  |
-//  +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-
-class ReportBlock {
- public:
-  ReportBlock() {
-    // TODO(asapersson): Consider adding a constructor to struct.
-    memset(&report_block_, 0, sizeof(report_block_));
-  }
-
-  ~ReportBlock() {}
-
-  void To(uint32_t ssrc) {
-    report_block_.SSRC = ssrc;
-  }
-  void WithFractionLost(uint8_t fraction_lost) {
-    report_block_.FractionLost = fraction_lost;
-  }
-  void WithCumulativeLost(uint32_t cumulative_lost) {
-    report_block_.CumulativeNumOfPacketsLost = cumulative_lost;
-  }
-  void WithExtHighestSeqNum(uint32_t ext_highest_seq_num) {
-    report_block_.ExtendedHighestSequenceNumber = ext_highest_seq_num;
-  }
-  void WithJitter(uint32_t jitter) {
-    report_block_.Jitter = jitter;
-  }
-  void WithLastSr(uint32_t last_sr) {
-    report_block_.LastSR = last_sr;
-  }
-  void WithDelayLastSr(uint32_t delay_last_sr) {
-    report_block_.DelayLastSR = delay_last_sr;
-  }
-
- private:
-  friend class SenderReport;
-  friend class ReceiverReport;
-  RTCPUtility::RTCPPacketReportBlockItem report_block_;
 };
 
 // RTCP sender report (RFC 3550).
@@ -268,100 +211,9 @@ class SenderReport : public RtcpPacket {
   }
 
   RTCPUtility::RTCPPacketSR sr_;
-  std::vector<RTCPUtility::RTCPPacketReportBlockItem> report_blocks_;
+  std::vector<ReportBlock> report_blocks_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(SenderReport);
-};
-
-//
-// RTCP receiver report (RFC 3550).
-//
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |V=2|P|    RC   |   PT=RR=201   |             length            |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                     SSRC of packet sender                     |
-//  +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-//  |                         report block(s)                       |
-//  |                            ....                               |
-
-class ReceiverReport : public RtcpPacket {
- public:
-  ReceiverReport() : RtcpPacket() {
-    memset(&rr_, 0, sizeof(rr_));
-  }
-
-  virtual ~ReceiverReport() {}
-
-  void From(uint32_t ssrc) {
-    rr_.SenderSSRC = ssrc;
-  }
-  bool WithReportBlock(const ReportBlock& block);
-
- protected:
-  bool Create(uint8_t* packet,
-              size_t* index,
-              size_t max_length,
-              RtcpPacket::PacketReadyCallback* callback) const override;
-
- private:
-  static const int kMaxNumberOfReportBlocks = 0x1F;
-
-  size_t BlockLength() const {
-    const size_t kRrHeaderLength = 8;
-    return kRrHeaderLength + report_blocks_.size() * kReportBlockLength;
-  }
-
-  RTCPUtility::RTCPPacketRR rr_;
-  std::vector<RTCPUtility::RTCPPacketReportBlockItem> report_blocks_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(ReceiverReport);
-};
-
-// Transmission Time Offsets in RTP Streams (RFC 5450).
-//
-//      0                   1                   2                   3
-//      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// hdr |V=2|P|    RC   |   PT=IJ=195   |             length            |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//     |                      inter-arrival jitter                     |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//     .                                                               .
-//     .                                                               .
-//     .                                                               .
-//     |                      inter-arrival jitter                     |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//
-//  If present, this RTCP packet must be placed after a receiver report
-//  (inside a compound RTCP packet), and MUST have the same value for RC
-//  (reception report count) as the receiver report.
-
-class Ij : public RtcpPacket {
- public:
-  Ij() : RtcpPacket() {}
-
-  virtual ~Ij() {}
-
-  bool WithJitterItem(uint32_t jitter);
-
- protected:
-  bool Create(uint8_t* packet,
-              size_t* index,
-              size_t max_length,
-              RtcpPacket::PacketReadyCallback* callback) const override;
-
- private:
-  static const int kMaxNumberOfIjItems = 0x1f;
-
-  size_t BlockLength() const {
-    return kHeaderLength + 4 * ij_items_.size();
-  }
-
-  std::vector<uint32_t> ij_items_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Ij);
 };
 
 // Source Description (SDES) (RFC 3550).
@@ -418,166 +270,6 @@ class Sdes : public RtcpPacket {
   std::vector<Chunk> chunks_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(Sdes);
-};
-
-//
-// Bye packet (BYE) (RFC 3550).
-//
-//        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//       |V=2|P|    SC   |   PT=BYE=203  |             length            |
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//       |                           SSRC/CSRC                           |
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//       :                              ...                              :
-//       +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-// (opt) |     length    |               reason for leaving            ...
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-class Bye : public RtcpPacket {
- public:
-  Bye() : RtcpPacket() {
-    memset(&bye_, 0, sizeof(bye_));
-  }
-
-  virtual ~Bye() {}
-
-  void From(uint32_t ssrc) {
-    bye_.SenderSSRC = ssrc;
-  }
-
-  bool WithCsrc(uint32_t csrc);
-
-  // TODO(sprang): Add support for reason field?
-
- protected:
-  bool Create(uint8_t* packet,
-              size_t* index,
-              size_t max_length,
-              RtcpPacket::PacketReadyCallback* callback) const override;
-
- private:
-  static const int kMaxNumberOfCsrcs = 0x1f - 1;  // First item is sender SSRC.
-
-  size_t BlockLength() const {
-    size_t source_count = 1 + csrcs_.size();
-    return kHeaderLength + 4 * source_count;
-  }
-
-  RTCPUtility::RTCPPacketBYE bye_;
-  std::vector<uint32_t> csrcs_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Bye);
-};
-
-// Application-Defined packet (APP) (RFC 3550).
-//
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |V=2|P| subtype |   PT=APP=204  |             length            |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                           SSRC/CSRC                           |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                          name (ASCII)                         |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                   application-dependent data                ...
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-class App : public RtcpPacket {
- public:
-  App()
-      : RtcpPacket(),
-        ssrc_(0) {
-    memset(&app_, 0, sizeof(app_));
-  }
-
-  virtual ~App() {}
-
-  void From(uint32_t ssrc) {
-    ssrc_ = ssrc;
-  }
-  void WithSubType(uint8_t subtype) {
-    assert(subtype <= 0x1f);
-    app_.SubType = subtype;
-  }
-  void WithName(uint32_t name) {
-    app_.Name = name;
-  }
-  void WithData(const uint8_t* data, uint16_t data_length) {
-    assert(data);
-    assert(data_length <= kRtcpAppCode_DATA_SIZE);
-    assert(data_length % 4 == 0);
-    memcpy(app_.Data, data, data_length);
-    app_.Size = data_length;
-  }
-
- protected:
-  bool Create(uint8_t* packet,
-              size_t* index,
-              size_t max_length,
-              RtcpPacket::PacketReadyCallback* callback) const override;
-
- private:
-  size_t BlockLength() const {
-    return 12 + app_.Size;
-  }
-
-  uint32_t ssrc_;
-  RTCPUtility::RTCPPacketAPP app_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(App);
-};
-
-// RFC 4585: Feedback format.
-//
-// Common packet format:
-//
-//    0                   1                   2                   3
-//    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |V=2|P|   FMT   |       PT      |          length               |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                  SSRC of packet sender                        |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                  SSRC of media source                         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   :            Feedback Control Information (FCI)                 :
-//   :
-
-// Picture loss indication (PLI) (RFC 4585).
-//
-// FCI: no feedback control information.
-
-class Pli : public RtcpPacket {
- public:
-  Pli() : RtcpPacket() {
-    memset(&pli_, 0, sizeof(pli_));
-  }
-
-  virtual ~Pli() {}
-
-  void From(uint32_t ssrc) {
-    pli_.SenderSSRC = ssrc;
-  }
-  void To(uint32_t ssrc) {
-    pli_.MediaSSRC = ssrc;
-  }
-
- protected:
-  bool Create(uint8_t* packet,
-              size_t* index,
-              size_t max_length,
-              RtcpPacket::PacketReadyCallback* callback) const override;
-
- private:
-  size_t BlockLength() const {
-    return kCommonFbFmtLength;
-  }
-
-  RTCPUtility::RTCPPacketPSFBPLI pli_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Pli);
 };
 
 // Slice loss indication (SLI) (RFC 4585).
@@ -978,10 +670,7 @@ class Xr : public RtcpPacket {
     return kXrHeaderLength + RrtrLength() + DlrrLength() + VoipMetricLength();
   }
 
-  size_t RrtrLength() const {
-    const size_t kRrtrBlockLength = 12;
-    return kRrtrBlockLength * rrtr_blocks_.size();
-  }
+  size_t RrtrLength() const { return Rrtr::kLength * rrtr_blocks_.size(); }
 
   size_t DlrrLength() const;
 
@@ -991,44 +680,11 @@ class Xr : public RtcpPacket {
   }
 
   RTCPUtility::RTCPPacketXR xr_header_;
-  std::vector<RTCPUtility::RTCPPacketXRReceiverReferenceTimeItem> rrtr_blocks_;
+  std::vector<Rrtr> rrtr_blocks_;
   std::vector<DlrrBlock> dlrr_blocks_;
   std::vector<RTCPUtility::RTCPPacketXRVOIPMetricItem> voip_metric_blocks_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(Xr);
-};
-
-// Receiver Reference Time Report Block (RFC 3611).
-//
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |     BT=4      |   reserved    |       block length = 2        |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |              NTP timestamp, most significant word             |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |             NTP timestamp, least significant word             |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-class Rrtr {
- public:
-  Rrtr() {
-    memset(&rrtr_block_, 0, sizeof(rrtr_block_));
-  }
-  ~Rrtr() {}
-
-  void WithNtpSec(uint32_t sec) {
-    rrtr_block_.NTPMostSignificant = sec;
-  }
-  void WithNtpFrac(uint32_t frac) {
-    rrtr_block_.NTPLeastSignificant = frac;
-  }
-
- private:
-  friend class Xr;
-  RTCPUtility::RTCPPacketXRReceiverReferenceTimeItem rrtr_block_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Rrtr);
 };
 
 // DLRR Report Block (RFC 3611).

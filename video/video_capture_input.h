@@ -14,18 +14,17 @@
 #include <vector>
 
 #include "webrtc/base/criticalsection.h"
+#include "webrtc/base/platform_thread.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/common_types.h"
 #include "webrtc/engine_configurations.h"
-#include "webrtc/modules/video_capture/include/video_capture.h"
-#include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
-#include "webrtc/modules/video_coding/main/interface/video_coding.h"
-#include "webrtc/modules/video_processing/main/interface/video_processing.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/modules/video_capture/video_capture.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
+#include "webrtc/modules/video_coding/include/video_coding.h"
+#include "webrtc/modules/video_processing/include/video_processing.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/typedefs.h"
-#include "webrtc/video_engine/vie_defines.h"
 #include "webrtc/video_send_stream.h"
 
 namespace webrtc {
@@ -79,7 +78,7 @@ class VideoCaptureInput : public webrtc::VideoCaptureInput {
   rtc::scoped_ptr<CriticalSectionWrapper> incoming_frame_cs_;
   VideoFrame incoming_frame_;
 
-  rtc::scoped_ptr<ThreadWrapper> encoder_thread_;
+  rtc::PlatformThread encoder_thread_;
   rtc::scoped_ptr<EventWrapper> capture_event_;
 
   volatile int stop_;

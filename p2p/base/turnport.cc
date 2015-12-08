@@ -140,8 +140,13 @@ class TurnEntry : public sigslot::has_slots<> {
   const rtc::SocketAddress& address() const { return ext_addr_; }
   BindState state() const { return state_; }
 
+  uint32_t destruction_timestamp() { return destruction_timestamp_; }
+  void set_destruction_timestamp(uint32_t destruction_timestamp) {
+    destruction_timestamp_ = destruction_timestamp;
+  }
+
   // Helper methods to send permission and channel bind requests.
-  void SendCreatePermissionRequest();
+  void SendCreatePermissionRequest(int delay);
   void SendChannelBindRequest(int delay);
   // Sends a packet to the given destination address.
   // This will wrap the packet in STUN if necessary.
@@ -160,6 +165,11 @@ class TurnEntry : public sigslot::has_slots<> {
   int channel_id_;
   rtc::SocketAddress ext_addr_;
   BindState state_;
+  // A non-zero value indicates that this entry is scheduled to be destroyed.
+  // It is also used as an ID of the event scheduling. When the destruction
+  // event actually fires, the TurnEntry will be destroyed only if the
+  // timestamp here matches the one in the firing event.
+  uint32_t destruction_timestamp_ = 0;
 };
 
 TurnPort::TurnPort(rtc::Thread* thread,
@@ -239,7 +249,7 @@ TurnPort::~TurnPort() {
   }
 
   while (!entries_.empty()) {
-    DestroyEntry(entries_.front()->address());
+    DestroyEntry(entries_.front());
   }
   if (resolver_) {
     resolver_->Destroy(false);
@@ -267,7 +277,7 @@ void TurnPort::PrepareAddress() {
     server_address_.address.SetPort(TURN_DEFAULT_PORT);
   }
 
-  if (server_address_.address.IsUnresolved()) {
+  if (server_address_.address.IsUnresolvedIP()) {
     ResolveTurnAddress(server_address_.address);
   } else {
     // If protocol family of server address doesn't match with local, return.
@@ -380,7 +390,7 @@ void TurnPort::OnSocketConnect(rtc::AsyncPacketSocket* socket) {
   }
 
   state_ = STATE_CONNECTED;  // It is ready to send stun requests.
-  if (server_address_.address.IsUnresolved()) {
+  if (server_address_.address.IsUnresolvedIP()) {
     server_address_.address = socket_->GetRemoteAddress();
   }
 
@@ -438,7 +448,7 @@ Connection* TurnPort::CreateConnection(const Candidate& address,
   }
 
   // Create an entry, if needed, so we can get our permissions set up correctly.
-  CreateEntry(address.address());
+  CreateOrRefreshEntry(address.address());
 
   // A TURN port will have two candiates, STUN and TURN. STUN may not
   // present in all cases. If present stun candidate will be added first
@@ -602,6 +612,8 @@ void TurnPort::ResolveTurnAddress(const rtc::SocketAddress& address) {
   if (resolver_)
     return;
 
+  LOG_J(LS_INFO, this) << "Starting TURN host lookup for "
+                       << address.ToSensitiveString();
   resolver_ = socket_factory()->CreateAsyncResolver();
   resolver_->SignalDone.connect(this, &TurnPort::OnResolveResult);
   resolver_->Start(address);
@@ -713,7 +725,6 @@ void TurnPort::OnMessage(rtc::Message* message) {
     }
     return;
   }
-
   Port::OnMessage(message);
 }
 
@@ -898,24 +909,63 @@ TurnEntry* TurnPort::FindEntry(int channel_id) const {
   return (it != entries_.end()) ? *it : NULL;
 }
 
-TurnEntry* TurnPort::CreateEntry(const rtc::SocketAddress& addr) {
-  ASSERT(FindEntry(addr) == NULL);
-  TurnEntry* entry = new TurnEntry(this, next_channel_number_++, addr);
-  entries_.push_back(entry);
-  return entry;
+bool TurnPort::EntryExists(TurnEntry* e) {
+  auto it = std::find(entries_.begin(), entries_.end(), e);
+  return it != entries_.end();
 }
 
-void TurnPort::DestroyEntry(const rtc::SocketAddress& addr) {
+void TurnPort::CreateOrRefreshEntry(const rtc::SocketAddress& addr) {
   TurnEntry* entry = FindEntry(addr);
+  if (entry == nullptr) {
+    entry = new TurnEntry(this, next_channel_number_++, addr);
+    entries_.push_back(entry);
+  } else {
+    // The channel binding request for the entry will be refreshed automatically
+    // until the entry is destroyed.
+    CancelEntryDestruction(entry);
+  }
+}
+
+void TurnPort::DestroyEntry(TurnEntry* entry) {
   ASSERT(entry != NULL);
   entry->SignalDestroyed(entry);
   entries_.remove(entry);
   delete entry;
 }
 
+void TurnPort::DestroyEntryIfNotCancelled(TurnEntry* entry,
+                                          uint32_t timestamp) {
+  if (!EntryExists(entry)) {
+    return;
+  }
+  bool cancelled = timestamp != entry->destruction_timestamp();
+  if (!cancelled) {
+    DestroyEntry(entry);
+  }
+}
+
 void TurnPort::OnConnectionDestroyed(Connection* conn) {
-  // Destroying TurnEntry for the connection, which is already destroyed.
-  DestroyEntry(conn->remote_candidate().address());
+  // Schedule an event to destroy TurnEntry for the connection, which is
+  // already destroyed.
+  const rtc::SocketAddress& remote_address = conn->remote_candidate().address();
+  TurnEntry* entry = FindEntry(remote_address);
+  ASSERT(entry != NULL);
+  ScheduleEntryDestruction(entry);
+}
+
+void TurnPort::ScheduleEntryDestruction(TurnEntry* entry) {
+  ASSERT(entry->destruction_timestamp() == 0);
+  uint32_t timestamp = rtc::Time();
+  entry->set_destruction_timestamp(timestamp);
+  invoker_.AsyncInvokeDelayed<void>(
+      thread(),
+      rtc::Bind(&TurnPort::DestroyEntryIfNotCancelled, this, entry, timestamp),
+      TURN_PERMISSION_TIMEOUT);
+}
+
+void TurnPort::CancelEntryDestruction(TurnEntry* entry) {
+  ASSERT(entry->destruction_timestamp() != 0);
+  entry->set_destruction_timestamp(0);
 }
 
 TurnAllocateRequest::TurnAllocateRequest(TurnPort* port)
@@ -1289,12 +1339,12 @@ TurnEntry::TurnEntry(TurnPort* port, int channel_id,
       ext_addr_(ext_addr),
       state_(STATE_UNBOUND) {
   // Creating permission for |ext_addr_|.
-  SendCreatePermissionRequest();
+  SendCreatePermissionRequest(0);
 }
 
-void TurnEntry::SendCreatePermissionRequest() {
-  port_->SendRequest(new TurnCreatePermissionRequest(
-      port_, this, ext_addr_), 0);
+void TurnEntry::SendCreatePermissionRequest(int delay) {
+  port_->SendRequest(new TurnCreatePermissionRequest(port_, this, ext_addr_),
+                     delay);
 }
 
 void TurnEntry::SendChannelBindRequest(int delay) {
@@ -1337,16 +1387,33 @@ void TurnEntry::OnCreatePermissionSuccess() {
                         << " succeeded";
   // For success result code will be 0.
   port_->SignalCreatePermissionResult(port_, ext_addr_, 0);
+
+  // If |state_| is STATE_BOUND, the permission will be refreshed
+  // by ChannelBindRequest.
+  if (state_ != STATE_BOUND) {
+    // Refresh the permission request about 1 minute before the permission
+    // times out.
+    int delay = TURN_PERMISSION_TIMEOUT - 60000;
+    SendCreatePermissionRequest(delay);
+    LOG_J(LS_INFO, port_) << "Scheduled create-permission-request in "
+                          << delay << "ms.";
+  }
 }
 
 void TurnEntry::OnCreatePermissionError(StunMessage* response, int code) {
   if (code == STUN_ERROR_STALE_NONCE) {
     if (port_->UpdateNonce(response)) {
-      SendCreatePermissionRequest();
+      SendCreatePermissionRequest(0);
     }
   } else {
     // Send signal with error code.
     port_->SignalCreatePermissionResult(port_, ext_addr_, code);
+    Connection* c = port_->GetConnection(ext_addr_);
+    if (c) {
+      LOG_J(LS_ERROR, c) << "Received TURN CreatePermission error response, "
+                         << "code=" << code << "; killing connection.";
+      c->FailAndDestroy();
+    }
   }
 }
 

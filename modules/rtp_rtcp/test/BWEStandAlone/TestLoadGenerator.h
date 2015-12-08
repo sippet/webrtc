@@ -13,8 +13,8 @@
 
 #include <stdlib.h>
 
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/base/platform_thread.h"
+#include "webrtc/modules/include/module_common_types.h"
 #include "webrtc/typedefs.h"
 
 class TestSenderReceiver;
@@ -44,7 +44,8 @@ protected:
 
     webrtc::CriticalSectionWrapper* _critSect;
     webrtc::EventWrapper *_eventPtr;
-    rtc::scoped_ptr<webrtc::ThreadWrapper> _genThread;
+    // TODO(pbos): Replace without pointer usage.
+    rtc::scoped_ptr<rtc::PlatformThread> _genThread;
     int32_t _bitrateKbps;
     TestSenderReceiver *_sender;
     bool _running;

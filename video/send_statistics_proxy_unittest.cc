@@ -28,8 +28,9 @@ class SendStatisticsProxyTest : public ::testing::Test {
 
  protected:
   virtual void SetUp() {
-    statistics_proxy_.reset(
-        new SendStatisticsProxy(&fake_clock_, GetTestConfig()));
+    statistics_proxy_.reset(new SendStatisticsProxy(
+        &fake_clock_, GetTestConfig(),
+        VideoEncoderConfig::ContentType::kRealtimeVideo));
     expected_ = VideoSendStream::Stats();
   }
 
@@ -285,6 +286,14 @@ TEST_F(SendStatisticsProxyTest, SendSideDelay) {
   }
   VideoSendStream::Stats stats = statistics_proxy_->GetStats();
   ExpectEqual(expected_, stats);
+}
+
+TEST_F(SendStatisticsProxyTest, OnEncodedFrame) {
+  const int kEncodeTimeMs = 11;
+  statistics_proxy_->OnEncodedFrame(kEncodeTimeMs);
+
+  VideoSendStream::Stats stats = statistics_proxy_->GetStats();
+  EXPECT_EQ(kEncodeTimeMs, stats.avg_encode_time_ms);
 }
 
 TEST_F(SendStatisticsProxyTest, NoSubstreams) {

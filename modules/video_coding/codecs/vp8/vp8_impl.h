@@ -22,12 +22,12 @@
 #include "vpx/vp8cx.h"
 #include "vpx/vp8dx.h"
 
-#include "webrtc/common_video/interface/i420_buffer_pool.h"
-#include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
+#include "webrtc/common_video/include/i420_buffer_pool.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
 #include "webrtc/modules/video_coding/codecs/vp8/reference_picture_selection.h"
-#include "webrtc/modules/video_coding/utility/include/frame_dropper.h"
-#include "webrtc/modules/video_coding/utility/include/quality_scaler.h"
+#include "webrtc/modules/video_coding/utility/frame_dropper.h"
+#include "webrtc/modules/video_coding/utility/quality_scaler.h"
 #include "webrtc/video_frame.h"
 
 namespace webrtc {
@@ -48,7 +48,7 @@ class VP8EncoderImpl : public VP8Encoder {
 
   virtual int Encode(const VideoFrame& input_image,
                      const CodecSpecificInfo* codec_specific_info,
-                     const std::vector<VideoFrameType>* frame_types);
+                     const std::vector<FrameType>* frame_types);
 
   virtual int RegisterEncodeCompleteCallback(EncodedImageCallback* callback);
 
@@ -114,6 +114,7 @@ class VP8EncoderImpl : public VP8Encoder {
   std::vector<vpx_codec_enc_cfg_t> configurations_;
   std::vector<vpx_rational_t> downsampling_factors_;
   QualityScaler quality_scaler_;
+  bool quality_scaler_enabled_;
 };  // end of VP8EncoderImpl class
 
 class VP8DecoderImpl : public VP8Decoder {

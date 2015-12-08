@@ -15,7 +15,7 @@
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/modules/audio_device/audio_device_generic.h"
 #include "webrtc/modules/audio_device/mac/audio_mixer_manager_mac.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 
 #include <AudioToolbox/AudioConverter.h>
 #include <CoreAudio/CoreAudio.h>
@@ -23,10 +23,13 @@
 
 struct PaUtilRingBuffer;
 
+namespace rtc {
+class PlatformThread;
+}  // namespace rtc
+
 namespace webrtc
 {
 class EventWrapper;
-class ThreadWrapper;
 
 const uint32_t N_REC_SAMPLES_PER_SEC = 48000;
 const uint32_t N_PLAY_SAMPLES_PER_SEC = 48000;
@@ -282,11 +285,13 @@ private:
     EventWrapper& _stopEventRec;
     EventWrapper& _stopEvent;
 
+    // TODO(pbos): Replace with direct members, just start/stop, no need to
+    // recreate the thread.
     // Only valid/running between calls to StartRecording and StopRecording.
-    rtc::scoped_ptr<ThreadWrapper> capture_worker_thread_;
+    rtc::scoped_ptr<rtc::PlatformThread> capture_worker_thread_;
 
     // Only valid/running between calls to StartPlayout and StopPlayout.
-    rtc::scoped_ptr<ThreadWrapper> render_worker_thread_;
+    rtc::scoped_ptr<rtc::PlatformThread> render_worker_thread_;
 
     int32_t _id;
 

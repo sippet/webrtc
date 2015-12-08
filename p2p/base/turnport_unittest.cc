@@ -100,6 +100,24 @@ class TurnPortTestVirtualSocketServer : public rtc::VirtualSocketServer {
   using rtc::VirtualSocketServer::LookupBinding;
 };
 
+class TestConnectionWrapper : public sigslot::has_slots<> {
+ public:
+  TestConnectionWrapper(Connection* conn) : connection_(conn) {
+    conn->SignalDestroyed.connect(
+        this, &TestConnectionWrapper::OnConnectionDestroyed);
+  }
+
+  Connection* connection() { return connection_; }
+
+ private:
+  void OnConnectionDestroyed(Connection* conn) {
+    ASSERT_TRUE(conn == connection_);
+    connection_ = nullptr;
+  }
+
+  Connection* connection_;
+};
+
 class TurnPortTest : public testing::Test,
                      public sigslot::has_slots<>,
                      public rtc::MessageHandler {
@@ -256,11 +274,13 @@ class TurnPortTest : public testing::Test,
     turn_port_->SignalCreatePermissionResult.connect(this,
         &TurnPortTest::OnTurnCreatePermissionResult);
   }
-  void CreateUdpPort() {
+
+  void CreateUdpPort() { CreateUdpPort(kLocalAddr2); }
+
+  void CreateUdpPort(const SocketAddress& address) {
     udp_port_.reset(UDPPort::Create(main_, &socket_factory_, &network_,
-                                    kLocalAddr2.ipaddr(), 0, 0,
-                                    kIceUfrag2, kIcePwd2,
-                                    std::string(), false));
+                                    address.ipaddr(), 0, 0, kIceUfrag2,
+                                    kIcePwd2, std::string(), false));
     // UDP port will be controlled.
     udp_port_->SetIceRole(cricket::ICEROLE_CONTROLLED);
     udp_port_->SignalPortComplete.connect(
@@ -383,6 +403,48 @@ class TurnPortTest : public testing::Test,
     conn1->Ping(0);
     EXPECT_EQ_WAIT(Connection::STATE_WRITABLE, conn1->write_state(), kTimeout);
     EXPECT_TRUE(conn2->receiving());
+  }
+
+  void TestDestroyTurnConnection() {
+    turn_port_->PrepareAddress();
+    ASSERT_TRUE_WAIT(turn_ready_, kTimeout);
+    // Create a remote UDP port
+    CreateUdpPort();
+    udp_port_->PrepareAddress();
+    ASSERT_TRUE_WAIT(udp_ready_, kTimeout);
+
+    // Create connections on both ends.
+    Connection* conn1 = udp_port_->CreateConnection(turn_port_->Candidates()[0],
+                                                    Port::ORIGIN_MESSAGE);
+    Connection* conn2 = turn_port_->CreateConnection(udp_port_->Candidates()[0],
+                                                     Port::ORIGIN_MESSAGE);
+    ASSERT_TRUE(conn2 != NULL);
+    ASSERT_TRUE_WAIT(turn_create_permission_success_, kTimeout);
+    // Make sure turn connection can receive.
+    conn1->Ping(0);
+    EXPECT_EQ_WAIT(Connection::STATE_WRITABLE, conn1->write_state(), kTimeout);
+    EXPECT_FALSE(turn_unknown_address_);
+
+    // Destroy the connection on the turn port. The TurnEntry is still
+    // there. So the turn port gets ping from unknown address if it is pinged.
+    conn2->Destroy();
+    conn1->Ping(0);
+    EXPECT_TRUE_WAIT(turn_unknown_address_, kTimeout);
+
+    // Flush all requests in the invoker to destroy the TurnEntry.
+    // Now the turn port cannot receive the ping.
+    turn_unknown_address_ = false;
+    turn_port_->invoker()->Flush(rtc::Thread::Current());
+    conn1->Ping(0);
+    rtc::Thread::Current()->ProcessMessages(500);
+    EXPECT_FALSE(turn_unknown_address_);
+
+    // If the connection is created again, it will start to receive pings.
+    conn2 = turn_port_->CreateConnection(udp_port_->Candidates()[0],
+                                         Port::ORIGIN_MESSAGE);
+    conn1->Ping(0);
+    EXPECT_TRUE_WAIT(conn2->receiving(), kTimeout);
+    EXPECT_FALSE(turn_unknown_address_);
   }
 
   void TestTurnSendData() {
@@ -694,6 +756,20 @@ TEST_F(TurnPortTest, TestTurnTcpConnection) {
   TestTurnConnection();
 }
 
+// Test that if a connection on a TURN port is destroyed, the TURN port can
+// still receive ping on that connection as if it is from an unknown address.
+// If the connection is created again, it will be used to receive ping.
+TEST_F(TurnPortTest, TestDestroyTurnConnection) {
+  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
+  TestDestroyTurnConnection();
+}
+
+// Similar to above, except that this test will use the shared socket.
+TEST_F(TurnPortTest, TestDestroyTurnConnectionUsingSharedSocket) {
+  CreateSharedTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
+  TestDestroyTurnConnection();
+}
+
 // Test that we fail to create a connection when we want to use TLS over TCP.
 // This test should be removed once we have TLS support.
 TEST_F(TurnPortTest, TestTurnTlsTcpConnectionFails) {
@@ -713,6 +789,28 @@ TEST_F(TurnPortTest, TestTurnConnectionUsingOTUNonce) {
   turn_server_.set_enable_otu_nonce(true);
   CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
   TestTurnConnection();
+}
+
+// Test that CreatePermissionRequest will be scheduled after the success
+// of the first create permission request.
+TEST_F(TurnPortTest, TestRefreshCreatePermissionRequest) {
+  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
+
+  ASSERT_TRUE(turn_port_ != NULL);
+  turn_port_->PrepareAddress();
+  ASSERT_TRUE_WAIT(turn_ready_, kTimeout);
+  CreateUdpPort();
+  udp_port_->PrepareAddress();
+  ASSERT_TRUE_WAIT(udp_ready_, kTimeout);
+
+  Connection* conn = turn_port_->CreateConnection(udp_port_->Candidates()[0],
+                                                  Port::ORIGIN_MESSAGE);
+  ASSERT_TRUE(conn != NULL);
+  ASSERT_TRUE_WAIT(turn_create_permission_success_, kTimeout);
+  turn_create_permission_success_ = false;
+  // A create-permission-request should be pending.
+  turn_port_->FlushRequests();
+  ASSERT_TRUE_WAIT(turn_create_permission_success_, kTimeout);
 }
 
 // Do a TURN allocation, establish a UDP connection, and send some data.
@@ -769,6 +867,29 @@ TEST_F(TurnPortTest, TestOriginHeader) {
   SocketAddress local_address = turn_port_->GetLocalAddress();
   ASSERT_TRUE(turn_server_.FindAllocation(local_address) != NULL);
   EXPECT_EQ(kTestOrigin, turn_server_.FindAllocation(local_address)->origin());
+}
+
+// Test that a CreatePermission failure will result in the connection being
+// destroyed.
+TEST_F(TurnPortTest, TestConnectionDestroyedOnCreatePermissionFailure) {
+  turn_server_.AddInternalSocket(kTurnTcpIntAddr, cricket::PROTO_TCP);
+  turn_server_.server()->set_reject_private_addresses(true);
+  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnTcpProtoAddr);
+  turn_port_->PrepareAddress();
+  ASSERT_TRUE_WAIT(turn_ready_, kTimeout);
+
+  CreateUdpPort(SocketAddress("10.0.0.10", 0));
+  udp_port_->PrepareAddress();
+  ASSERT_TRUE_WAIT(udp_ready_, kTimeout);
+  // Create a connection.
+  TestConnectionWrapper conn(turn_port_->CreateConnection(
+      udp_port_->Candidates()[0], Port::ORIGIN_MESSAGE));
+  ASSERT_TRUE(conn.connection() != nullptr);
+
+  // Asynchronously, CreatePermission request should be sent and fail, closing
+  // the connection.
+  EXPECT_TRUE_WAIT(conn.connection() == nullptr, kTimeout);
+  EXPECT_FALSE(turn_create_permission_success_);
 }
 
 // Test that a TURN allocation is released when the port is closed.

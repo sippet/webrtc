@@ -20,13 +20,13 @@
       ],
       'include_dirs': [
         '.',
-        '../interface',
+        '../include',
         'include',
         'dummy',  # Contains dummy audio device implementations.
       ],
       'direct_dependent_settings': {
         'include_dirs': [
-          '../interface',
+          '../include',
           'include',
         ],
       },
@@ -200,7 +200,8 @@
     },
   ],
   'conditions': [
-    ['include_tests==1', {
+    # Does not compile on iOS: webrtc:4755.
+    ['include_tests==1 and OS!="ios"', {
       'targets': [
         {
           'target_name': 'audio_device_tests',
@@ -236,7 +237,7 @@
           ],
         },
       ], # targets
-    }], # include_tests
+    }], # include_tests==1 and OS!=ios
   ],
 }
 

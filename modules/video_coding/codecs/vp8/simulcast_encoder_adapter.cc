@@ -15,6 +15,7 @@
 // NOTE(ajm): Path provided by gyp.
 #include "libyuv/scale.h"  // NOLINT
 
+#include "webrtc/base/checks.h"
 #include "webrtc/common.h"
 #include "webrtc/modules/video_coding/codecs/vp8/screenshare_layers.h"
 
@@ -232,7 +233,7 @@ int SimulcastEncoderAdapter::InitEncode(const VideoCodec* inst,
 int SimulcastEncoderAdapter::Encode(
     const VideoFrame& input_image,
     const CodecSpecificInfo* codec_specific_info,
-    const std::vector<VideoFrameType>* frame_types) {
+    const std::vector<FrameType>* frame_types) {
   if (!Initialized()) {
     return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
   }
@@ -245,7 +246,7 @@ int SimulcastEncoderAdapter::Encode(
   bool send_key_frame = false;
   if (frame_types) {
     for (size_t i = 0; i < frame_types->size(); ++i) {
-      if (frame_types->at(i) == kKeyFrame) {
+      if (frame_types->at(i) == kVideoFrameKey) {
         send_key_frame = true;
         break;
       }
@@ -266,12 +267,12 @@ int SimulcastEncoderAdapter::Encode(
     if (!streaminfos_[stream_idx].send_stream)
       continue;
 
-    std::vector<VideoFrameType> stream_frame_types;
+    std::vector<FrameType> stream_frame_types;
     if (send_key_frame) {
-      stream_frame_types.push_back(kKeyFrame);
+      stream_frame_types.push_back(kVideoFrameKey);
       streaminfos_[stream_idx].key_frame_request = false;
     } else {
-      stream_frame_types.push_back(kDeltaFrame);
+      stream_frame_types.push_back(kVideoFrameDelta);
     }
 
     int dst_width = streaminfos_[stream_idx].width;
@@ -495,6 +496,15 @@ void SimulcastEncoderAdapter::OnDroppedFrame() {
 
 int SimulcastEncoderAdapter::GetTargetFramerate() {
   return streaminfos_[0].encoder->GetTargetFramerate();
+}
+
+bool SimulcastEncoderAdapter::SupportsNativeHandle() const {
+  // We should not be calling this method before streaminfos_ are configured.
+  RTC_DCHECK(!streaminfos_.empty());
+  // TODO(pbos): Support textures when using more than one encoder.
+  if (streaminfos_.size() != 1)
+    return false;
+  return streaminfos_[0].encoder->SupportsNativeHandle();
 }
 
 }  // namespace webrtc

@@ -22,9 +22,9 @@
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
 #include "webrtc/modules/audio_processing/test/protobuf_utils.h"
 #include "webrtc/modules/audio_processing/test/test_utils.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/system_wrappers/interface/cpu_features_wrapper.h"
-#include "webrtc/system_wrappers/interface/tick_util.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/system_wrappers/include/cpu_features_wrapper.h"
+#include "webrtc/system_wrappers/include/tick_util.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/perf_test.h"
 #ifdef WEBRTC_ANDROID_PLATFORM_BUILD
@@ -636,8 +636,8 @@ void void_main(int argc, char* argv[]) {
         }
 
         if (!raw_output) {
-          // The WAV file needs to be reset every time, because it cant change
-          // it's sample rate or number of channels.
+          // The WAV file needs to be reset every time, because it can't change
+          // its sample rate or number of channels.
           output_wav_file.reset(new WavWriter(out_filename + ".wav",
                                               output_sample_rate,
                                               msg.num_output_channels()));
@@ -1049,7 +1049,9 @@ void void_main(int argc, char* argv[]) {
       }
     }
   }
-  printf("100%% complete\r");
+  if (progress) {
+    printf("100%% complete\r");
+  }
 
   if (aecm_echo_path_out_file != NULL) {
     const size_t path_size =

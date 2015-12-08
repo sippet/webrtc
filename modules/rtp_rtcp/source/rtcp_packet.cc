@@ -11,35 +11,30 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
 
 #include "webrtc/base/checks.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
-#include "webrtc/system_wrappers/interface/logging.h"
 
 using webrtc::RTCPUtility::kBtDlrr;
 using webrtc::RTCPUtility::kBtReceiverReferenceTime;
 using webrtc::RTCPUtility::kBtVoipMetric;
 
 using webrtc::RTCPUtility::PT_APP;
-using webrtc::RTCPUtility::PT_BYE;
 using webrtc::RTCPUtility::PT_IJ;
 using webrtc::RTCPUtility::PT_PSFB;
-using webrtc::RTCPUtility::PT_RR;
 using webrtc::RTCPUtility::PT_RTPFB;
 using webrtc::RTCPUtility::PT_SDES;
 using webrtc::RTCPUtility::PT_SR;
 using webrtc::RTCPUtility::PT_XR;
 
 using webrtc::RTCPUtility::RTCPPacketAPP;
-using webrtc::RTCPUtility::RTCPPacketBYE;
 using webrtc::RTCPUtility::RTCPPacketPSFBAPP;
 using webrtc::RTCPUtility::RTCPPacketPSFBFIR;
 using webrtc::RTCPUtility::RTCPPacketPSFBFIRItem;
-using webrtc::RTCPUtility::RTCPPacketPSFBPLI;
 using webrtc::RTCPUtility::RTCPPacketPSFBREMBItem;
 using webrtc::RTCPUtility::RTCPPacketPSFBRPSI;
 using webrtc::RTCPUtility::RTCPPacketPSFBSLI;
 using webrtc::RTCPUtility::RTCPPacketPSFBSLIItem;
 using webrtc::RTCPUtility::RTCPPacketReportBlockItem;
-using webrtc::RTCPUtility::RTCPPacketRR;
 using webrtc::RTCPUtility::RTCPPacketRTPFBNACK;
 using webrtc::RTCPUtility::RTCPPacketRTPFBNACKItem;
 using webrtc::RTCPUtility::RTCPPacketRTPFBTMMBN;
@@ -48,7 +43,6 @@ using webrtc::RTCPUtility::RTCPPacketRTPFBTMMBR;
 using webrtc::RTCPUtility::RTCPPacketRTPFBTMMBRItem;
 using webrtc::RTCPUtility::RTCPPacketSR;
 using webrtc::RTCPUtility::RTCPPacketXRDLRRReportBlockItem;
-using webrtc::RTCPUtility::RTCPPacketXRReceiverReferenceTimeItem;
 using webrtc::RTCPUtility::RTCPPacketXR;
 using webrtc::RTCPUtility::RTCPPacketXRVOIPMetricItem;
 
@@ -122,21 +116,6 @@ void CreateSenderReport(const RTCPPacketSR& sr,
   AssignUWord32(buffer, pos, sr.SenderOctetCount);
 }
 
-//  Receiver report (RR), header (RFC 3550).
-//
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |V=2|P|    RC   |   PT=RR=201   |             length            |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                     SSRC of packet sender                     |
-//  +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-
-void CreateReceiverReport(const RTCPPacketRR& rr,
-                          uint8_t* buffer,
-                          size_t* pos) {
-  AssignUWord32(buffer, pos, rr.SenderSSRC);
-}
-
 //  Report block (RFC 3550).
 //
 //   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -154,41 +133,13 @@ void CreateReceiverReport(const RTCPPacketRR& rr,
 //  |                   delay since last SR (DLSR)                  |
 //  +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-void CreateReportBlocks(const std::vector<RTCPPacketReportBlockItem>& blocks,
+void CreateReportBlocks(const std::vector<ReportBlock>& blocks,
                         uint8_t* buffer,
                         size_t* pos) {
-  for (std::vector<RTCPPacketReportBlockItem>::const_iterator
-       it = blocks.begin(); it != blocks.end(); ++it) {
-    AssignUWord32(buffer, pos, (*it).SSRC);
-    AssignUWord8(buffer, pos, (*it).FractionLost);
-    AssignUWord24(buffer, pos, (*it).CumulativeNumOfPacketsLost);
-    AssignUWord32(buffer, pos, (*it).ExtendedHighestSequenceNumber);
-    AssignUWord32(buffer, pos, (*it).Jitter);
-    AssignUWord32(buffer, pos, (*it).LastSR);
-    AssignUWord32(buffer, pos, (*it).DelayLastSR);
+  for (const ReportBlock& block : blocks) {
+    block.Create(buffer + *pos);
+    *pos += ReportBlock::kLength;
   }
-}
-
-// Transmission Time Offsets in RTP Streams (RFC 5450).
-//
-//      0                   1                   2                   3
-//      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// hdr |V=2|P|    RC   |   PT=IJ=195   |             length            |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//     |                      inter-arrival jitter                     |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//     .                                                               .
-//     .                                                               .
-//     .                                                               .
-//     |                      inter-arrival jitter                     |
-//     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-void CreateIj(const std::vector<uint32_t>& ij_items,
-              uint8_t* buffer,
-              size_t* pos) {
-  for (uint32_t item : ij_items)
-    AssignUWord32(buffer, pos, item);
 }
 
 // Source Description (SDES) (RFC 3550).
@@ -231,80 +182,6 @@ void CreateSdes(const std::vector<Sdes::Chunk>& chunks,
     memset(buffer + *pos, 0, (*it).null_octets);
     *pos += (*it).null_octets;
   }
-}
-
-// Bye packet (BYE) (RFC 3550).
-//
-//        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//       |V=2|P|    SC   |   PT=BYE=203  |             length            |
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//       |                           SSRC/CSRC                           |
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//       :                              ...                              :
-//       +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-// (opt) |     length    |               reason for leaving            ...
-//       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-void CreateBye(const RTCPPacketBYE& bye,
-               const std::vector<uint32_t>& csrcs,
-               uint8_t* buffer,
-               size_t* pos) {
-  AssignUWord32(buffer, pos, bye.SenderSSRC);
-  for (uint32_t csrc : csrcs)
-    AssignUWord32(buffer, pos, csrc);
-}
-
-// Application-Defined packet (APP) (RFC 3550).
-//
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |V=2|P| subtype |   PT=APP=204  |             length            |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                           SSRC/CSRC                           |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                          name (ASCII)                         |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                   application-dependent data                ...
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-void CreateApp(const RTCPPacketAPP& app,
-               uint32_t ssrc,
-               uint8_t* buffer,
-               size_t* pos) {
-  AssignUWord32(buffer, pos, ssrc);
-  AssignUWord32(buffer, pos, app.Name);
-  memcpy(buffer + *pos, app.Data, app.Size);
-  *pos += app.Size;
-}
-
-// RFC 4585: Feedback format.
-//
-// Common packet format:
-//
-//    0                   1                   2                   3
-//    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |V=2|P|   FMT   |       PT      |          length               |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                  SSRC of packet sender                        |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                  SSRC of media source                         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   :            Feedback Control Information (FCI)                 :
-//   :
-//
-
-// Picture loss indication (PLI) (RFC 4585).
-//
-// FCI: no feedback control information.
-
-void CreatePli(const RTCPPacketPSFBPLI& pli,
-               uint8_t* buffer,
-               size_t* pos) {
-  AssignUWord32(buffer, pos, pli.SenderSSRC);
-  AssignUWord32(buffer, pos, pli.MediaSSRC);
 }
 
 // Slice loss indication (SLI) (RFC 4585).
@@ -538,30 +415,6 @@ void CreateXrBlockHeader(uint8_t block_type,
   AssignUWord16(buffer, pos, block_length);
 }
 
-// Receiver Reference Time Report Block (RFC 3611).
-//
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |     BT=4      |   reserved    |       block length = 2        |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |              NTP timestamp, most significant word             |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |             NTP timestamp, least significant word             |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-void CreateRrtr(const std::vector<RTCPPacketXRReceiverReferenceTimeItem>& rrtrs,
-                uint8_t* buffer,
-                size_t* pos) {
-  const uint16_t kBlockLength = 2;
-  for (std::vector<RTCPPacketXRReceiverReferenceTimeItem>::const_iterator it =
-       rrtrs.begin(); it != rrtrs.end(); ++it) {
-    CreateXrBlockHeader(kBtReceiverReferenceTime, kBlockLength, buffer, pos);
-    AssignUWord32(buffer, pos, (*it).NTPMostSignificant);
-    AssignUWord32(buffer, pos, (*it).NTPLeastSignificant);
-  }
-}
-
 // DLRR Report Block (RFC 3611).
 //
 //   0                   1                   2                   3
@@ -781,55 +634,8 @@ bool SenderReport::WithReportBlock(const ReportBlock& block) {
     LOG(LS_WARNING) << "Max report blocks reached.";
     return false;
   }
-  report_blocks_.push_back(block.report_block_);
+  report_blocks_.push_back(block);
   sr_.NumberOfReportBlocks = report_blocks_.size();
-  return true;
-}
-
-bool ReceiverReport::Create(uint8_t* packet,
-                            size_t* index,
-                            size_t max_length,
-                            RtcpPacket::PacketReadyCallback* callback) const {
-  while (*index + BlockLength() > max_length) {
-    if (!OnBufferFull(packet, index, callback))
-      return false;
-  }
-  CreateHeader(rr_.NumberOfReportBlocks, PT_RR, HeaderLength(), packet, index);
-  CreateReceiverReport(rr_, packet, index);
-  CreateReportBlocks(report_blocks_, packet, index);
-  return true;
-}
-
-bool ReceiverReport::WithReportBlock(const ReportBlock& block) {
-  if (report_blocks_.size() >= kMaxNumberOfReportBlocks) {
-    LOG(LS_WARNING) << "Max report blocks reached.";
-    return false;
-  }
-  report_blocks_.push_back(block.report_block_);
-  rr_.NumberOfReportBlocks = report_blocks_.size();
-  return true;
-}
-
-bool Ij::Create(uint8_t* packet,
-                size_t* index,
-                size_t max_length,
-                RtcpPacket::PacketReadyCallback* callback) const {
-  while (*index + BlockLength() > max_length) {
-    if (!OnBufferFull(packet, index, callback))
-      return false;
-  }
-  size_t length = ij_items_.size();
-  CreateHeader(length, PT_IJ, length, packet, index);
-  CreateIj(ij_items_, packet, index);
-  return true;
-}
-
-bool Ij::WithJitterItem(uint32_t jitter) {
-  if (ij_items_.size() >= kMaxNumberOfIjItems) {
-    LOG(LS_WARNING) << "Max inter-arrival jitter items reached.";
-    return false;
-  }
-  ij_items_.push_back(jitter);
   return true;
 }
 
@@ -874,56 +680,6 @@ size_t Sdes::BlockLength() const {
     length += 6 + chunk.name.length() + chunk.null_octets;
   assert(length % 4 == 0);
   return length;
-}
-
-bool Bye::Create(uint8_t* packet,
-                 size_t* index,
-                 size_t max_length,
-                 RtcpPacket::PacketReadyCallback* callback) const {
-  while (*index + BlockLength() > max_length) {
-    if (!OnBufferFull(packet, index, callback))
-      return false;
-  }
-  size_t length = HeaderLength();
-  CreateHeader(length, PT_BYE, length, packet, index);
-  CreateBye(bye_, csrcs_, packet, index);
-  return true;
-}
-
-bool Bye::WithCsrc(uint32_t csrc) {
-  if (csrcs_.size() >= kMaxNumberOfCsrcs) {
-    LOG(LS_WARNING) << "Max CSRC size reached.";
-    return false;
-  }
-  csrcs_.push_back(csrc);
-  return true;
-}
-
-bool App::Create(uint8_t* packet,
-                 size_t* index,
-                 size_t max_length,
-                 RtcpPacket::PacketReadyCallback* callback) const {
-  while (*index + BlockLength() > max_length) {
-    if (!OnBufferFull(packet, index, callback))
-      return false;
-  }
-  CreateHeader(app_.SubType, PT_APP, HeaderLength(), packet, index);
-  CreateApp(app_, ssrc_, packet, index);
-  return true;
-}
-
-bool Pli::Create(uint8_t* packet,
-                 size_t* index,
-                 size_t max_length,
-                 RtcpPacket::PacketReadyCallback* callback) const {
-  while (*index + BlockLength() > max_length) {
-    if (!OnBufferFull(packet, index, callback))
-      return false;
-  }
-  const uint8_t kFmt = 1;
-  CreateHeader(kFmt, PT_PSFB, HeaderLength(), packet, index);
-  CreatePli(pli_, packet, index);
-  return true;
 }
 
 bool Sli::Create(uint8_t* packet,
@@ -1129,19 +885,22 @@ bool Xr::Create(uint8_t* packet,
   }
   CreateHeader(0U, PT_XR, HeaderLength(), packet, index);
   CreateXrHeader(xr_header_, packet, index);
-  CreateRrtr(rrtr_blocks_, packet, index);
+  for (const Rrtr& block : rrtr_blocks_) {
+    block.Create(packet + *index);
+    *index += Rrtr::kLength;
+  }
   CreateDlrr(dlrr_blocks_, packet, index);
   CreateVoipMetric(voip_metric_blocks_, packet, index);
   return true;
 }
 
 bool Xr::WithRrtr(Rrtr* rrtr) {
-  assert(rrtr);
+  RTC_DCHECK(rrtr);
   if (rrtr_blocks_.size() >= kMaxNumberOfRrtrBlocks) {
     LOG(LS_WARNING) << "Max RRTR blocks reached.";
     return false;
   }
-  rrtr_blocks_.push_back(rrtr->rrtr_block_);
+  rrtr_blocks_.push_back(*rrtr);
   return true;
 }
 

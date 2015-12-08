@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <map>
 
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/basictypes.h"
 #include "webrtc/base/byteorder.h"
 #include "webrtc/base/common.h"
@@ -171,12 +172,12 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     sockaddr* addr = reinterpret_cast<sockaddr*>(&addr_storage);
     int err = ::bind(s_, addr, static_cast<int>(len));
     UpdateLastError();
-#ifdef _DEBUG
+#if !defined(NDEBUG)
     if (0 == err) {
       dbg_addr_ = "Bound @ ";
       dbg_addr_.append(GetLocalAddress().ToString());
     }
-#endif  // _DEBUG
+#endif
     return err;
   }
 
@@ -187,7 +188,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
       SetError(EALREADY);
       return SOCKET_ERROR;
     }
-    if (addr.IsUnresolved()) {
+    if (addr.IsUnresolvedIP()) {
       LOG(LS_VERBOSE) << "Resolving addr in PhysicalSocket::Connect";
       resolver_ = new AsyncResolver();
       resolver_->SignalDone.connect(this, &PhysicalSocket::OnResolveResult);
@@ -361,10 +362,10 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
     if (err == 0) {
       state_ = CS_CONNECTING;
       enabled_events_ |= DE_ACCEPT;
-#ifdef _DEBUG
+#if !defined(NDEBUG)
       dbg_addr_ = "Listening @ ";
       dbg_addr_.append(GetLocalAddress().ToString());
-#endif  // _DEBUG
+#endif
     }
     return err;
   }
@@ -400,7 +401,7 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
 
   int EstimateMTU(uint16_t* mtu) override {
     SocketAddress addr = GetRemoteAddress();
-    if (addr.IsAny()) {
+    if (addr.IsAnyIP()) {
       SetError(ENOTCONN);
       return -1;
     }
@@ -549,9 +550,9 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
   ConnState state_;
   AsyncResolver* resolver_;
 
-#ifdef _DEBUG
+#if !defined(NDEBUG)
   std::string dbg_addr_;
-#endif  // _DEBUG;
+#endif
 };
 
 #if defined(WEBRTC_POSIX)
@@ -628,8 +629,8 @@ class PosixSignalHandler {
 
   // Returns true if the given signal number is set.
   bool IsSignalSet(int signum) const {
-    ASSERT(signum < ARRAY_SIZE(received_signal_));
-    if (signum < ARRAY_SIZE(received_signal_)) {
+    ASSERT(signum < static_cast<int>(arraysize(received_signal_)));
+    if (signum < static_cast<int>(arraysize(received_signal_))) {
       return received_signal_[signum];
     } else {
       return false;
@@ -638,8 +639,8 @@ class PosixSignalHandler {
 
   // Clears the given signal number.
   void ClearSignal(int signum) {
-    ASSERT(signum < ARRAY_SIZE(received_signal_));
-    if (signum < ARRAY_SIZE(received_signal_)) {
+    ASSERT(signum < static_cast<int>(arraysize(received_signal_)));
+    if (signum < static_cast<int>(arraysize(received_signal_))) {
       received_signal_[signum] = false;
     }
   }
@@ -654,7 +655,7 @@ class PosixSignalHandler {
   // user-level state of the process, since the handler could be executed at any
   // time on any thread.
   void OnPosixSignalReceived(int signum) {
-    if (signum >= ARRAY_SIZE(received_signal_)) {
+    if (signum >= static_cast<int>(arraysize(received_signal_))) {
       // We don't have space in our array for this.
       return;
     }
@@ -1088,10 +1089,10 @@ class SocketDispatcher : public Dispatcher, public PhysicalSocket {
       if (ff != DE_CONNECT)
         LOG(LS_VERBOSE) << "Signalled with DE_CONNECT: " << ff;
       enabled_events_ &= ~DE_CONNECT;
-#ifdef _DEBUG
+#if !defined(NDEBUG)
       dbg_addr_ = "Connected @ ";
       dbg_addr_.append(GetRemoteAddress().ToString());
-#endif  // _DEBUG
+#endif
       SignalConnectEvent(this);
     }
     if (((ff & DE_ACCEPT) != 0) && (id_ == cache_id)) {

@@ -20,9 +20,9 @@
 #include "engine.h"
 #endif
 
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/tick_util.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/tick_util.h"
 
 using namespace webrtc;
 
@@ -895,8 +895,8 @@ _numPlots(0)
 {
     _eventPtr = EventWrapper::Create();
 
-    _plotThread = ThreadWrapper::CreateThread(MatlabEngine::PlotThread, this,
-                                              kLowPriority, "MatlabPlot");
+    _plotThread(MatlabEngine::PlotThread, this,
+                                               kLowPriority, "MatlabPlot");
     _running = true;
     _plotThread->Start();
 }

@@ -214,13 +214,19 @@ TEST_F(PhysicalSocketTest, MAYBE_TestUdpIPv6) {
 // Also disable for MSan, see:
 // https://code.google.com/p/webrtc/issues/detail?id=4958
 // TODO(deadbeef): Enable again once test is reimplemented to be unflaky.
-#if !defined(THREAD_SANITIZER) && !defined(MEMORY_SANITIZER)
-
-TEST_F(PhysicalSocketTest, TestUdpReadyToSendIPv4) {
+// Also disable for ASan.
+// Disabled on Android: https://code.google.com/p/webrtc/issues/detail?id=4364
+// Disabled on Linux: https://bugs.chromium.org/p/webrtc/issues/detail?id=5233
+#if defined(THREAD_SANITIZER) || defined(MEMORY_SANITIZER) || \
+    defined(ADDRESS_SANITIZER) || defined(WEBRTC_ANDROID) ||  \
+    defined(WEBRTC_LINUX)
+#define MAYBE_TestUdpReadyToSendIPv4 DISABLED_TestUdpReadyToSendIPv4
+#else
+#define MAYBE_TestUdpReadyToSendIPv4 TestUdpReadyToSendIPv4
+#endif
+TEST_F(PhysicalSocketTest, MAYBE_TestUdpReadyToSendIPv4) {
   SocketTest::TestUdpReadyToSendIPv4();
 }
-
-#endif // if !defined(THREAD_SANITIZER) && !defined(MEMORY_SANITIZER)
 
 TEST_F(PhysicalSocketTest, TestUdpReadyToSendIPv6) {
   SocketTest::TestUdpReadyToSendIPv6();

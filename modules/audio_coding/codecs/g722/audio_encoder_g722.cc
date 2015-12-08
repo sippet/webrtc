@@ -8,12 +8,12 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "webrtc/modules/audio_coding/codecs/g722/include/audio_encoder_g722.h"
+#include "webrtc/modules/audio_coding/codecs/g722/audio_encoder_g722.h"
 
 #include <limits>
 #include "webrtc/base/checks.h"
 #include "webrtc/common_types.h"
-#include "webrtc/modules/audio_coding/codecs/g722/include/g722_interface.h"
+#include "webrtc/modules/audio_coding/codecs/g722/g722_interface.h"
 
 namespace webrtc {
 
@@ -93,7 +93,7 @@ int AudioEncoderG722::GetTargetBitrate() const {
 
 AudioEncoder::EncodedInfo AudioEncoderG722::EncodeInternal(
     uint32_t rtp_timestamp,
-    const int16_t* audio,
+    rtc::ArrayView<const int16_t> audio,
     size_t max_encoded_bytes,
     uint8_t* encoded) {
   RTC_CHECK_GE(max_encoded_bytes, MaxEncodedBytes());

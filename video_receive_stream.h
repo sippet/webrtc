@@ -113,6 +113,9 @@ class VideoReceiveStream : public ReceiveStream {
       // See draft-alvestrand-rmcat-remb for information.
       bool remb = false;
 
+      // See draft-holmer-rmcat-transport-wide-cc-extensions for details.
+      bool transport_cc = false;
+
       // See NackConfig for description.
       NackConfig nack;
 
@@ -132,6 +135,11 @@ class VideoReceiveStream : public ReceiveStream {
       // Map from video RTP payload type -> RTX config.
       typedef std::map<int, Rtx> RtxMap;
       RtxMap rtx;
+
+      // If set to true, the RTX payload type mapping supplied in |rtx| will be
+      // used when restoring RTX packets. Without it, RTX packets will always be
+      // restored to the last non-RTX packet payload type received.
+      bool use_rtx_payload_mapping_on_restore = false;
 
       // RTP header extensions used for the received stream.
       std::vector<RtpExtension> extensions;

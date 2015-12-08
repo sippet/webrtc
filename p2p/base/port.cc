@@ -310,6 +310,10 @@ void Port::OnReadPacket(
   }
 }
 
+void Port::OnSentPacket(const rtc::SentPacket& sent_packet) {
+  PortInterface::SignalSentPacket(this, sent_packet);
+}
+
 void Port::OnReadyToSend() {
   AddressMap::iterator iter = connections_.begin();
   for (; iter != connections_.end(); ++iter) {
@@ -563,10 +567,6 @@ void Port::SendBindingResponse(StunMessage* request,
   response.AddMessageIntegrity(password_);
   response.AddFingerprint();
 
-  // The fact that we received a successful request means that this connection
-  // (if one exists) should now be receiving.
-  Connection* conn = GetConnection(addr);
-
   // Send the response message.
   rtc::ByteBuffer buf;
   response.Write(&buf);
@@ -581,6 +581,7 @@ void Port::SendBindingResponse(StunMessage* request,
   } else {
     // Log at LS_INFO if we send a stun ping response on an unwritable
     // connection.
+    Connection* conn = GetConnection(addr);
     rtc::LoggingSeverity sev = (conn && !conn->writable()) ?
         rtc::LS_INFO : rtc::LS_VERBOSE;
     LOG_JV(sev, this)
@@ -588,10 +589,6 @@ void Port::SendBindingResponse(StunMessage* request,
         << ", to=" << addr.ToSensitiveString()
         << ", id=" << rtc::hex_encode(response.transaction_id());
   }
-
-  ASSERT(conn != NULL);
-  if (conn)
-    conn->ReceivedPing();
 }
 
 void Port::SendBindingErrorResponse(StunMessage* request,
@@ -920,29 +917,7 @@ void Connection::OnReadPacket(
                           << ", id=" << rtc::hex_encode(msg->transaction_id());
 
         if (remote_ufrag == remote_candidate_.username()) {
-          // Check for role conflicts.
-          if (!port_->MaybeIceRoleConflict(addr, msg.get(), remote_ufrag)) {
-            // Received conflicting role from the peer.
-            LOG(LS_INFO) << "Received conflicting role from the peer.";
-            return;
-          }
-
-          // Incoming, validated stun request from remote peer.
-          // This call will also set the connection receiving.
-          port_->SendBindingResponse(msg.get(), addr);
-
-          // If timed out sending writability checks, start up again
-          if (!pruned_ && (write_state_ == STATE_WRITE_TIMEOUT))
-            set_write_state(STATE_WRITE_INIT);
-
-          if (port_->GetIceRole() == ICEROLE_CONTROLLED) {
-            const StunByteStringAttribute* use_candidate_attr =
-                msg->GetByteString(STUN_ATTR_USE_CANDIDATE);
-            if (use_candidate_attr) {
-              set_nominated(true);
-              SignalNominated(this);
-            }
-          }
+          HandleBindingRequest(msg.get());
         } else {
           // The packet had the right local username, but the remote username
           // was not the right one for the remote address.
@@ -982,6 +957,37 @@ void Connection::OnReadPacket(
   }
 }
 
+void Connection::HandleBindingRequest(IceMessage* msg) {
+  // This connection should now be receiving.
+  ReceivedPing();
+
+  const rtc::SocketAddress& remote_addr = remote_candidate_.address();
+  const std::string& remote_ufrag = remote_candidate_.username();
+  // Check for role conflicts.
+  if (!port_->MaybeIceRoleConflict(remote_addr, msg, remote_ufrag)) {
+    // Received conflicting role from the peer.
+    LOG(LS_INFO) << "Received conflicting role from the peer.";
+    return;
+  }
+
+  // This is a validated stun request from remote peer.
+  port_->SendBindingResponse(msg, remote_addr);
+
+  // If it timed out on writing check, start up again
+  if (!pruned_ && write_state_ == STATE_WRITE_TIMEOUT) {
+    set_write_state(STATE_WRITE_INIT);
+  }
+
+  if (port_->GetIceRole() == ICEROLE_CONTROLLED) {
+    const StunByteStringAttribute* use_candidate_attr =
+        msg->GetByteString(STUN_ATTR_USE_CANDIDATE);
+    if (use_candidate_attr) {
+      set_nominated(true);
+      SignalNominated(this);
+    }
+  }
+}
+
 void Connection::OnReadyToSend() {
   if (write_state_ == STATE_WRITABLE) {
     SignalReadyToSend(this);
@@ -1000,6 +1006,11 @@ void Connection::Prune() {
 void Connection::Destroy() {
   LOG_J(LS_VERBOSE, this) << "Connection destroyed";
   port_->thread()->Post(this, MSG_DELETE);
+}
+
+void Connection::FailAndDestroy() {
+  set_state(Connection::STATE_FAILED);
+  Destroy();
 }
 
 void Connection::PrintPingsSinceLastResponse(std::string* s, size_t max) {
@@ -1121,17 +1132,9 @@ bool Connection::dead(uint32_t now) const {
     return false;
   }
 
-  if (receiving_) {
-    // A connection that is receiving is alive.
-    return false;
-  }
-
-  // A connection is alive until it is inactive.
-  return !active();
-
-  // TODO(honghaiz): Move from using the write state to using the receiving
-  // state with something like the following:
-  // return (now > (last_received() + DEAD_CONNECTION_RECEIVE_TIMEOUT));
+  // It is dead if it has not received anything for
+  // DEAD_CONNECTION_RECEIVE_TIMEOUT milliseconds.
+  return (now > (last_received() + DEAD_CONNECTION_RECEIVE_TIMEOUT));
 }
 
 std::string Connection::ToDebugId() const {
@@ -1244,8 +1247,7 @@ void Connection::OnConnectionRequestErrorResponse(ConnectionRequest* request,
     // This is not a valid connection.
     LOG_J(LS_ERROR, this) << "Received STUN error response, code="
                           << error_code << "; killing connection";
-    set_state(STATE_FAILED);
-    Destroy();
+    FailAndDestroy();
   }
 }
 
@@ -1298,13 +1300,13 @@ void Connection::OnMessage(rtc::Message *pmsg) {
   delete this;
 }
 
-uint32_t Connection::last_received() {
+uint32_t Connection::last_received() const {
   return std::max(last_data_received_,
              std::max(last_ping_received_, last_ping_response_received_));
 }
 
 size_t Connection::recv_bytes_second() {
-  return recv_rate_tracker_.ComputeRate();
+  return round(recv_rate_tracker_.ComputeRate());
 }
 
 size_t Connection::recv_total_bytes() {
@@ -1312,7 +1314,7 @@ size_t Connection::recv_total_bytes() {
 }
 
 size_t Connection::sent_bytes_second() {
-  return send_rate_tracker_.ComputeRate();
+  return round(send_rate_tracker_.ComputeRate());
 }
 
 size_t Connection::sent_total_bytes() {
@@ -1392,10 +1394,10 @@ void Connection::MaybeAddPrflxCandidate(ConnectionRequest* request,
   SignalStateChange(this);
 }
 
-ProxyConnection::ProxyConnection(Port* port, size_t index,
-                                 const Candidate& candidate)
-  : Connection(port, index, candidate), error_(0) {
-}
+ProxyConnection::ProxyConnection(Port* port,
+                                 size_t index,
+                                 const Candidate& remote_candidate)
+    : Connection(port, index, remote_candidate) {}
 
 int ProxyConnection::Send(const void* data, size_t size,
                           const rtc::PacketOptions& options) {

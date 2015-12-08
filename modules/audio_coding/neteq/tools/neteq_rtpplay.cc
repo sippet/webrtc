@@ -26,16 +26,16 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/base/safe_conversions.h"
 #include "webrtc/base/scoped_ptr.h"
-#include "webrtc/modules/audio_coding/codecs/pcm16b/include/pcm16b.h"
-#include "webrtc/modules/audio_coding/neteq/interface/neteq.h"
+#include "webrtc/modules/audio_coding/codecs/pcm16b/pcm16b.h"
+#include "webrtc/modules/audio_coding/neteq/include/neteq.h"
 #include "webrtc/modules/audio_coding/neteq/tools/input_audio_file.h"
 #include "webrtc/modules/audio_coding/neteq/tools/output_audio_file.h"
 #include "webrtc/modules/audio_coding/neteq/tools/output_wav_file.h"
 #include "webrtc/modules/audio_coding/neteq/tools/packet.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtc_event_log_source.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtp_file_source.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/test/rtp_file_reader.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/typedefs.h"
@@ -147,39 +147,39 @@ const bool hex_ssrc_dummy =
 // Maps a codec type to a printable name string.
 std::string CodecName(webrtc::NetEqDecoder codec) {
   switch (codec) {
-    case webrtc::kDecoderPCMu:
+    case webrtc::NetEqDecoder::kDecoderPCMu:
       return "PCM-u";
-    case webrtc::kDecoderPCMa:
+    case webrtc::NetEqDecoder::kDecoderPCMa:
       return "PCM-a";
-    case webrtc::kDecoderILBC:
+    case webrtc::NetEqDecoder::kDecoderILBC:
       return "iLBC";
-    case webrtc::kDecoderISAC:
+    case webrtc::NetEqDecoder::kDecoderISAC:
       return "iSAC";
-    case webrtc::kDecoderISACswb:
+    case webrtc::NetEqDecoder::kDecoderISACswb:
       return "iSAC-swb (32 kHz)";
-    case webrtc::kDecoderOpus:
+    case webrtc::NetEqDecoder::kDecoderOpus:
       return "Opus";
-    case webrtc::kDecoderPCM16B:
+    case webrtc::NetEqDecoder::kDecoderPCM16B:
       return "PCM16b-nb (8 kHz)";
-    case webrtc::kDecoderPCM16Bwb:
+    case webrtc::NetEqDecoder::kDecoderPCM16Bwb:
       return "PCM16b-wb (16 kHz)";
-    case webrtc::kDecoderPCM16Bswb32kHz:
+    case webrtc::NetEqDecoder::kDecoderPCM16Bswb32kHz:
       return "PCM16b-swb32 (32 kHz)";
-    case webrtc::kDecoderPCM16Bswb48kHz:
+    case webrtc::NetEqDecoder::kDecoderPCM16Bswb48kHz:
       return "PCM16b-swb48 (48 kHz)";
-    case webrtc::kDecoderG722:
+    case webrtc::NetEqDecoder::kDecoderG722:
       return "G.722";
-    case webrtc::kDecoderRED:
+    case webrtc::NetEqDecoder::kDecoderRED:
       return "redundant audio (RED)";
-    case webrtc::kDecoderAVT:
+    case webrtc::NetEqDecoder::kDecoderAVT:
       return "AVT/DTMF";
-    case webrtc::kDecoderCNGnb:
+    case webrtc::NetEqDecoder::kDecoderCNGnb:
       return "comfort noise (8 kHz)";
-    case webrtc::kDecoderCNGwb:
+    case webrtc::NetEqDecoder::kDecoderCNGwb:
       return "comfort noise (16 kHz)";
-    case webrtc::kDecoderCNGswb32kHz:
+    case webrtc::NetEqDecoder::kDecoderCNGswb32kHz:
       return "comfort noise (32 kHz)";
-    case webrtc::kDecoderCNGswb48kHz:
+    case webrtc::NetEqDecoder::kDecoderCNGswb48kHz:
       return "comfort noise (48 kHz)";
     default:
       assert(false);
@@ -200,25 +200,30 @@ void RegisterPayloadType(NetEq* neteq,
 // Registers all decoders in |neteq|.
 void RegisterPayloadTypes(NetEq* neteq) {
   assert(neteq);
-  RegisterPayloadType(neteq, webrtc::kDecoderPCMu, FLAGS_pcmu);
-  RegisterPayloadType(neteq, webrtc::kDecoderPCMa, FLAGS_pcma);
-  RegisterPayloadType(neteq, webrtc::kDecoderILBC, FLAGS_ilbc);
-  RegisterPayloadType(neteq, webrtc::kDecoderISAC, FLAGS_isac);
-  RegisterPayloadType(neteq, webrtc::kDecoderISACswb, FLAGS_isac_swb);
-  RegisterPayloadType(neteq, webrtc::kDecoderOpus, FLAGS_opus);
-  RegisterPayloadType(neteq, webrtc::kDecoderPCM16B, FLAGS_pcm16b);
-  RegisterPayloadType(neteq, webrtc::kDecoderPCM16Bwb, FLAGS_pcm16b_wb);
-  RegisterPayloadType(neteq, webrtc::kDecoderPCM16Bswb32kHz,
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCMu, FLAGS_pcmu);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCMa, FLAGS_pcma);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderILBC, FLAGS_ilbc);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderISAC, FLAGS_isac);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderISACswb,
+                      FLAGS_isac_swb);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderOpus, FLAGS_opus);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16B,
+                      FLAGS_pcm16b);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bwb,
+                      FLAGS_pcm16b_wb);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bswb32kHz,
                       FLAGS_pcm16b_swb32);
-  RegisterPayloadType(neteq, webrtc::kDecoderPCM16Bswb48kHz,
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bswb48kHz,
                       FLAGS_pcm16b_swb48);
-  RegisterPayloadType(neteq, webrtc::kDecoderG722, FLAGS_g722);
-  RegisterPayloadType(neteq, webrtc::kDecoderAVT, FLAGS_avt);
-  RegisterPayloadType(neteq, webrtc::kDecoderRED, FLAGS_red);
-  RegisterPayloadType(neteq, webrtc::kDecoderCNGnb, FLAGS_cn_nb);
-  RegisterPayloadType(neteq, webrtc::kDecoderCNGwb, FLAGS_cn_wb);
-  RegisterPayloadType(neteq, webrtc::kDecoderCNGswb32kHz, FLAGS_cn_swb32);
-  RegisterPayloadType(neteq, webrtc::kDecoderCNGswb48kHz, FLAGS_cn_swb48);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderG722, FLAGS_g722);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderAVT, FLAGS_avt);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderRED, FLAGS_red);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGnb, FLAGS_cn_nb);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGwb, FLAGS_cn_wb);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGswb32kHz,
+                      FLAGS_cn_swb32);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGswb48kHz,
+                      FLAGS_cn_swb48);
 }
 
 void PrintCodecMappingEntry(webrtc::NetEqDecoder codec, google::int32 flag) {
@@ -226,23 +231,28 @@ void PrintCodecMappingEntry(webrtc::NetEqDecoder codec, google::int32 flag) {
 }
 
 void PrintCodecMapping() {
-  PrintCodecMappingEntry(webrtc::kDecoderPCMu, FLAGS_pcmu);
-  PrintCodecMappingEntry(webrtc::kDecoderPCMa, FLAGS_pcma);
-  PrintCodecMappingEntry(webrtc::kDecoderILBC, FLAGS_ilbc);
-  PrintCodecMappingEntry(webrtc::kDecoderISAC, FLAGS_isac);
-  PrintCodecMappingEntry(webrtc::kDecoderISACswb, FLAGS_isac_swb);
-  PrintCodecMappingEntry(webrtc::kDecoderOpus, FLAGS_opus);
-  PrintCodecMappingEntry(webrtc::kDecoderPCM16B, FLAGS_pcm16b);
-  PrintCodecMappingEntry(webrtc::kDecoderPCM16Bwb, FLAGS_pcm16b_wb);
-  PrintCodecMappingEntry(webrtc::kDecoderPCM16Bswb32kHz, FLAGS_pcm16b_swb32);
-  PrintCodecMappingEntry(webrtc::kDecoderPCM16Bswb48kHz, FLAGS_pcm16b_swb48);
-  PrintCodecMappingEntry(webrtc::kDecoderG722, FLAGS_g722);
-  PrintCodecMappingEntry(webrtc::kDecoderAVT, FLAGS_avt);
-  PrintCodecMappingEntry(webrtc::kDecoderRED, FLAGS_red);
-  PrintCodecMappingEntry(webrtc::kDecoderCNGnb, FLAGS_cn_nb);
-  PrintCodecMappingEntry(webrtc::kDecoderCNGwb, FLAGS_cn_wb);
-  PrintCodecMappingEntry(webrtc::kDecoderCNGswb32kHz, FLAGS_cn_swb32);
-  PrintCodecMappingEntry(webrtc::kDecoderCNGswb48kHz, FLAGS_cn_swb48);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderPCMu, FLAGS_pcmu);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderPCMa, FLAGS_pcma);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderILBC, FLAGS_ilbc);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderISAC, FLAGS_isac);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderISACswb, FLAGS_isac_swb);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderOpus, FLAGS_opus);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderPCM16B, FLAGS_pcm16b);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderPCM16Bwb,
+                         FLAGS_pcm16b_wb);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderPCM16Bswb32kHz,
+                         FLAGS_pcm16b_swb32);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderPCM16Bswb48kHz,
+                         FLAGS_pcm16b_swb48);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderG722, FLAGS_g722);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderAVT, FLAGS_avt);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderRED, FLAGS_red);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderCNGnb, FLAGS_cn_nb);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderCNGwb, FLAGS_cn_wb);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderCNGswb32kHz,
+                         FLAGS_cn_swb32);
+  PrintCodecMappingEntry(webrtc::NetEqDecoder::kDecoderCNGswb48kHz,
+                         FLAGS_cn_swb48);
 }
 
 bool IsComfortNoise(uint8_t payload_type) {
@@ -389,23 +399,12 @@ int main(int argc, char* argv[]) {
 
   printf("Input file: %s\n", argv[1]);
 
-  // TODO(ivoc): Modify the RtpFileSource::Create and RtcEventLogSource::Create
-  //             functions to return a nullptr on failure instead of crashing
-  //             the program.
-
-  // This temporary solution uses a RtpFileReader directly to check if the file
-  // is a valid RtpDump file.
   bool is_rtp_dump = false;
-  {
-    rtc::scoped_ptr<webrtc::test::RtpFileReader> rtp_reader(
-        webrtc::test::RtpFileReader::Create(
-            webrtc::test::RtpFileReader::kRtpDump, argv[1]));
-    if (rtp_reader)
-      is_rtp_dump = true;
-  }
   rtc::scoped_ptr<webrtc::test::PacketSource> file_source;
   webrtc::test::RtcEventLogSource* event_log_source = nullptr;
-  if (is_rtp_dump) {
+  if (webrtc::test::RtpFileSource::ValidRtpDump(argv[1]) ||
+      webrtc::test::RtpFileSource::ValidPcap(argv[1])) {
+    is_rtp_dump = true;
     file_source.reset(webrtc::test::RtpFileSource::Create(argv[1]));
   } else {
     event_log_source = webrtc::test::RtcEventLogSource::Create(argv[1]);
@@ -548,7 +547,7 @@ int main(int argc, char* argv[]) {
         payload_ptr = payload.get();
       }
       int error = neteq->InsertPacket(
-          rtp_header, payload_ptr, payload_len,
+          rtp_header, rtc::ArrayView<const uint8_t>(payload_ptr, payload_len),
           static_cast<uint32_t>(packet->time_ms() * sample_rate_hz / 1000));
       if (error != NetEq::kOK) {
         if (neteq->LastError() == NetEq::kUnknownRtpPayloadType) {

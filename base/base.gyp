@@ -22,6 +22,27 @@
         }],
       ],
     }],
+    # TODO(tkchin): Mac support. There are a bunch of problems right now because
+    # of some settings pulled down from Chromium.
+    ['OS=="ios"', {
+      'targets': [
+        {
+          'target_name': 'rtc_base_objc',
+          'type': 'static_library',
+          'dependencies': [
+            'rtc_base',
+          ],
+          'sources': [
+            'objc/RTCLogging.h',
+            'objc/RTCLogging.mm'
+          ],
+          'xcode_settings': {
+            'CLANG_ENABLE_OBJC_ARC': 'YES',
+            'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'YES',
+          },
+        }
+      ],
+    }], # OS=="ios"
   ],
   'targets': [
     {
@@ -29,8 +50,8 @@
       'target_name': 'rtc_base_approved',
       'type': 'static_library',
       'sources': [
+        'array_view.h',
         'atomicops.h',
-        'basictypes.h',
         'bitbuffer.cc',
         'bitbuffer.h',
         'buffer.cc',
@@ -57,10 +78,12 @@
         'md5.h',
         'md5digest.cc',
         'md5digest.h',
+        'optional.h',
         'platform_file.cc',
         'platform_file.h',
         'platform_thread.cc',
         'platform_thread.h',
+        'platform_thread_types.h',
         'ratetracker.cc',
         'ratetracker.h',
         'safe_conversions.h',
@@ -83,8 +106,15 @@
       ],
       'conditions': [
         ['build_with_chromium==1', {
+          'dependencies': [
+            '<(DEPTH)/base/base.gyp:base',
+          ],
           'include_dirs': [
             '../../webrtc_overrides',
+          ],
+          'sources': [
+            '../../webrtc_overrides/webrtc/base/logging.cc',
+            '../../webrtc_overrides/webrtc/base/logging.h',
           ],
           'sources!': [
             'logging.cc',
@@ -219,6 +249,8 @@
         'nethelpers.h',
         'network.cc',
         'network.h',
+        'networkmonitor.cc',
+        'networkmonitor.h',
         'nullsocketserver.h',
         'openssl.h',
         'openssladapter.cc',
@@ -376,8 +408,6 @@
             '../../boringssl/src/include',
           ],
           'sources': [
-            '../../webrtc_overrides/webrtc/base/logging.cc',
-            '../../webrtc_overrides/webrtc/base/logging.h',
             '../../webrtc_overrides/webrtc/base/win32socketinit.cc',
           ],
           'sources!': [
@@ -386,7 +416,6 @@
             'bandwidthsmoother.h',
             'bind.h',
             'callback.h',
-            'constructormagic.h',
             'dbus.cc',
             'dbus.h',
             'diskcache_win32.cc',

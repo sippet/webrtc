@@ -14,21 +14,23 @@
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/format_macros.h"
+#include "webrtc/base/logging.h"
+#include "webrtc/base/thread_checker.h"
 #include "webrtc/base/timeutils.h"
 #include "webrtc/common.h"
 #include "webrtc/config.h"
 #include "webrtc/modules/audio_device/include/audio_device.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/modules/rtp_rtcp/interface/receive_statistics.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_payload_registry.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_receiver.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/modules/pacing/packet_router.h"
+#include "webrtc/modules/rtp_rtcp/include/receive_statistics.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_payload_registry.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_receiver_strategy.h"
-#include "webrtc/modules/utility/interface/audio_frame_operations.h"
-#include "webrtc/modules/utility/interface/process_thread.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/logging.h"
-#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/modules/utility/include/audio_frame_operations.h"
+#include "webrtc/modules/utility/include/process_thread.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/voice_engine/include/voe_base.h"
 #include "webrtc/voice_engine/include/voe_external_media.h"
 #include "webrtc/voice_engine/include/voe_rtp_rtcp.h"
@@ -43,6 +45,104 @@
 
 namespace webrtc {
 namespace voe {
+
+class TransportFeedbackProxy : public TransportFeedbackObserver {
+ public:
+  TransportFeedbackProxy() : feedback_observer_(nullptr) {
+    pacer_thread_.DetachFromThread();
+    network_thread_.DetachFromThread();
+  }
+
+  void SetTransportFeedbackObserver(
+      TransportFeedbackObserver* feedback_observer) {
+    RTC_DCHECK(thread_checker_.CalledOnValidThread());
+    rtc::CritScope lock(&crit_);
+    feedback_observer_ = feedback_observer;
+  }
+
+  // Implements TransportFeedbackObserver.
+  void AddPacket(uint16_t sequence_number,
+                 size_t length,
+                 bool was_paced) override {
+    RTC_DCHECK(pacer_thread_.CalledOnValidThread());
+    rtc::CritScope lock(&crit_);
+    if (feedback_observer_)
+      feedback_observer_->AddPacket(sequence_number, length, was_paced);
+  }
+  void OnTransportFeedback(const rtcp::TransportFeedback& feedback) override {
+    RTC_DCHECK(network_thread_.CalledOnValidThread());
+    rtc::CritScope lock(&crit_);
+    if (feedback_observer_)
+      feedback_observer_->OnTransportFeedback(feedback);
+  }
+
+ private:
+  rtc::CriticalSection crit_;
+  rtc::ThreadChecker thread_checker_;
+  rtc::ThreadChecker pacer_thread_;
+  rtc::ThreadChecker network_thread_;
+  TransportFeedbackObserver* feedback_observer_ GUARDED_BY(&crit_);
+};
+
+class TransportSequenceNumberProxy : public TransportSequenceNumberAllocator {
+ public:
+  TransportSequenceNumberProxy() : seq_num_allocator_(nullptr) {
+    pacer_thread_.DetachFromThread();
+  }
+
+  void SetSequenceNumberAllocator(
+      TransportSequenceNumberAllocator* seq_num_allocator) {
+    RTC_DCHECK(thread_checker_.CalledOnValidThread());
+    rtc::CritScope lock(&crit_);
+    seq_num_allocator_ = seq_num_allocator;
+  }
+
+  // Implements TransportSequenceNumberAllocator.
+  uint16_t AllocateSequenceNumber() override {
+    RTC_DCHECK(pacer_thread_.CalledOnValidThread());
+    rtc::CritScope lock(&crit_);
+    if (!seq_num_allocator_)
+      return 0;
+    return seq_num_allocator_->AllocateSequenceNumber();
+  }
+
+ private:
+  rtc::CriticalSection crit_;
+  rtc::ThreadChecker thread_checker_;
+  rtc::ThreadChecker pacer_thread_;
+  TransportSequenceNumberAllocator* seq_num_allocator_ GUARDED_BY(&crit_);
+};
+
+class RtpPacketSenderProxy : public RtpPacketSender {
+ public:
+  RtpPacketSenderProxy() : rtp_packet_sender_(nullptr) {
+  }
+
+  void SetPacketSender(RtpPacketSender* rtp_packet_sender) {
+    RTC_DCHECK(thread_checker_.CalledOnValidThread());
+    rtc::CritScope lock(&crit_);
+    rtp_packet_sender_ = rtp_packet_sender;
+  }
+
+  // Implements RtpPacketSender.
+  void InsertPacket(Priority priority,
+                    uint32_t ssrc,
+                    uint16_t sequence_number,
+                    int64_t capture_time_ms,
+                    size_t bytes,
+                    bool retransmission) override {
+    rtc::CritScope lock(&crit_);
+    if (rtp_packet_sender_) {
+      rtp_packet_sender_->InsertPacket(priority, ssrc, sequence_number,
+                                       capture_time_ms, bytes, retransmission);
+    }
+  }
+
+ private:
+  rtc::ThreadChecker thread_checker_;
+  rtc::CriticalSection crit_;
+  RtpPacketSender* rtp_packet_sender_ GUARDED_BY(&crit_);
+};
 
 // Extend the default RTCP statistics struct with max_jitter, defined as the
 // maximum jitter value seen in an RTCP report block.
@@ -690,89 +790,97 @@ Channel::Channel(int32_t channelId,
                  uint32_t instanceId,
                  RtcEventLog* const event_log,
                  const Config& config)
-  : _fileCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
-    _callbackCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
-    volume_settings_critsect_(*CriticalSectionWrapper::CreateCriticalSection()),
-    _instanceId(instanceId),
-    _channelId(channelId),
-    event_log_(event_log),
-    rtp_header_parser_(RtpHeaderParser::Create()),
-    rtp_payload_registry_(
-        new RTPPayloadRegistry(RTPPayloadStrategy::CreateStrategy(true))),
-    rtp_receive_statistics_(
-        ReceiveStatistics::Create(Clock::GetRealTimeClock())),
-    rtp_receiver_(
-        RtpReceiver::CreateAudioReceiver(Clock::GetRealTimeClock(),
-                                         this,
-                                         this,
-                                         this,
-                                         rtp_payload_registry_.get())),
-    telephone_event_handler_(rtp_receiver_->GetTelephoneEventHandler()),
-    _outputAudioLevel(),
-    _externalTransport(false),
-    _inputFilePlayerPtr(NULL),
-    _outputFilePlayerPtr(NULL),
-    _outputFileRecorderPtr(NULL),
-    // Avoid conflict with other channels by adding 1024 - 1026,
-    // won't use as much as 1024 channels.
-    _inputFilePlayerId(VoEModuleId(instanceId, channelId) + 1024),
-    _outputFilePlayerId(VoEModuleId(instanceId, channelId) + 1025),
-    _outputFileRecorderId(VoEModuleId(instanceId, channelId) + 1026),
-    _outputFileRecording(false),
-    _inbandDtmfQueue(VoEModuleId(instanceId, channelId)),
-    _inbandDtmfGenerator(VoEModuleId(instanceId, channelId)),
-    _outputExternalMedia(false),
-    _inputExternalMediaCallbackPtr(NULL),
-    _outputExternalMediaCallbackPtr(NULL),
-    _timeStamp(0),  // This is just an offset, RTP module will add it's own
-                    // random offset
-    _sendTelephoneEventPayloadType(106),
-    ntp_estimator_(Clock::GetRealTimeClock()),
-    jitter_buffer_playout_timestamp_(0),
-    playout_timestamp_rtp_(0),
-    playout_timestamp_rtcp_(0),
-    playout_delay_ms_(0),
-    _numberOfDiscardedPackets(0),
-    send_sequence_number_(0),
-    ts_stats_lock_(CriticalSectionWrapper::CreateCriticalSection()),
-    rtp_ts_wraparound_handler_(new rtc::TimestampWrapAroundHandler()),
-    capture_start_rtp_time_stamp_(-1),
-    capture_start_ntp_time_ms_(-1),
-    _engineStatisticsPtr(NULL),
-    _outputMixerPtr(NULL),
-    _transmitMixerPtr(NULL),
-    _moduleProcessThreadPtr(NULL),
-    _audioDeviceModulePtr(NULL),
-    _voiceEngineObserverPtr(NULL),
-    _callbackCritSectPtr(NULL),
-    _transportPtr(NULL),
-    _rxVadObserverPtr(NULL),
-    _oldVadDecision(-1),
-    _sendFrameType(0),
-    _externalMixing(false),
-    _mixFileWithMicrophone(false),
-    _mute(false),
-    _panLeft(1.0f),
-    _panRight(1.0f),
-    _outputGain(1.0f),
-    _playOutbandDtmfEvent(false),
-    _playInbandDtmfEvent(false),
-    _lastLocalTimeStamp(0),
-    _lastPayloadType(0),
-    _includeAudioLevelIndication(false),
-    _outputSpeechType(AudioFrame::kNormalSpeech),
-    video_sync_lock_(CriticalSectionWrapper::CreateCriticalSection()),
-    _average_jitter_buffer_delay_us(0),
-    _previousTimestamp(0),
-    _recPacketDelayMs(20),
-    _RxVadDetection(false),
-    _rxAgcIsEnabled(false),
-    _rxNsIsEnabled(false),
-    restored_packet_in_use_(false),
-    rtcp_observer_(new VoERtcpObserver(this)),
-    network_predictor_(new NetworkPredictor(Clock::GetRealTimeClock())),
-    assoc_send_channel_lock_(CriticalSectionWrapper::CreateCriticalSection()),
-    associate_send_channel_(ChannelOwner(nullptr)) {
+    : _fileCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
+      _callbackCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
+      volume_settings_critsect_(
+          *CriticalSectionWrapper::CreateCriticalSection()),
+      _instanceId(instanceId),
+      _channelId(channelId),
+      event_log_(event_log),
+      rtp_header_parser_(RtpHeaderParser::Create()),
+      rtp_payload_registry_(
+          new RTPPayloadRegistry(RTPPayloadStrategy::CreateStrategy(true))),
+      rtp_receive_statistics_(
+          ReceiveStatistics::Create(Clock::GetRealTimeClock())),
+      rtp_receiver_(
+          RtpReceiver::CreateAudioReceiver(Clock::GetRealTimeClock(),
+                                           this,
+                                           this,
+                                           this,
+                                           rtp_payload_registry_.get())),
+      telephone_event_handler_(rtp_receiver_->GetTelephoneEventHandler()),
+      _outputAudioLevel(),
+      _externalTransport(false),
+      _inputFilePlayerPtr(NULL),
+      _outputFilePlayerPtr(NULL),
+      _outputFileRecorderPtr(NULL),
+      // Avoid conflict with other channels by adding 1024 - 1026,
+      // won't use as much as 1024 channels.
+      _inputFilePlayerId(VoEModuleId(instanceId, channelId) + 1024),
+      _outputFilePlayerId(VoEModuleId(instanceId, channelId) + 1025),
+      _outputFileRecorderId(VoEModuleId(instanceId, channelId) + 1026),
+      _outputFileRecording(false),
+      _inbandDtmfQueue(VoEModuleId(instanceId, channelId)),
+      _inbandDtmfGenerator(VoEModuleId(instanceId, channelId)),
+      _outputExternalMedia(false),
+      _inputExternalMediaCallbackPtr(NULL),
+      _outputExternalMediaCallbackPtr(NULL),
+      _timeStamp(0),  // This is just an offset, RTP module will add it's own
+                      // random offset
+      _sendTelephoneEventPayloadType(106),
+      ntp_estimator_(Clock::GetRealTimeClock()),
+      jitter_buffer_playout_timestamp_(0),
+      playout_timestamp_rtp_(0),
+      playout_timestamp_rtcp_(0),
+      playout_delay_ms_(0),
+      _numberOfDiscardedPackets(0),
+      send_sequence_number_(0),
+      ts_stats_lock_(CriticalSectionWrapper::CreateCriticalSection()),
+      rtp_ts_wraparound_handler_(new rtc::TimestampWrapAroundHandler()),
+      capture_start_rtp_time_stamp_(-1),
+      capture_start_ntp_time_ms_(-1),
+      _engineStatisticsPtr(NULL),
+      _outputMixerPtr(NULL),
+      _transmitMixerPtr(NULL),
+      _moduleProcessThreadPtr(NULL),
+      _audioDeviceModulePtr(NULL),
+      _voiceEngineObserverPtr(NULL),
+      _callbackCritSectPtr(NULL),
+      _transportPtr(NULL),
+      _rxVadObserverPtr(NULL),
+      _oldVadDecision(-1),
+      _sendFrameType(0),
+      _externalMixing(false),
+      _mixFileWithMicrophone(false),
+      _mute(false),
+      _panLeft(1.0f),
+      _panRight(1.0f),
+      _outputGain(1.0f),
+      _playOutbandDtmfEvent(false),
+      _playInbandDtmfEvent(false),
+      _lastLocalTimeStamp(0),
+      _lastPayloadType(0),
+      _includeAudioLevelIndication(false),
+      _outputSpeechType(AudioFrame::kNormalSpeech),
+      video_sync_lock_(CriticalSectionWrapper::CreateCriticalSection()),
+      _average_jitter_buffer_delay_us(0),
+      _previousTimestamp(0),
+      _recPacketDelayMs(20),
+      _RxVadDetection(false),
+      _rxAgcIsEnabled(false),
+      _rxNsIsEnabled(false),
+      restored_packet_in_use_(false),
+      rtcp_observer_(new VoERtcpObserver(this)),
+      network_predictor_(new NetworkPredictor(Clock::GetRealTimeClock())),
+      assoc_send_channel_lock_(CriticalSectionWrapper::CreateCriticalSection()),
+      associate_send_channel_(ChannelOwner(nullptr)),
+      pacing_enabled_(config.Get<VoicePacing>().enabled),
+      feedback_observer_proxy_(pacing_enabled_ ? new TransportFeedbackProxy()
+                                               : nullptr),
+      seq_num_allocator_proxy_(
+          pacing_enabled_ ? new TransportSequenceNumberProxy() : nullptr),
+      rtp_packet_sender_proxy_(pacing_enabled_ ? new RtpPacketSenderProxy()
+                                               : nullptr) {
     WEBRTC_TRACE(kTraceMemory, kTraceVoice, VoEId(_instanceId,_channelId),
                  "Channel::Channel() - ctor");
     AudioCodingModule::Config acm_config;
@@ -797,6 +905,10 @@ Channel::Channel(int32_t channelId,
     configuration.audio_messages = this;
     configuration.receive_statistics = rtp_receive_statistics_.get();
     configuration.bandwidth_callback = rtcp_observer_.get();
+    configuration.paced_sender = rtp_packet_sender_proxy_.get();
+    configuration.transport_sequence_number_allocator =
+        seq_num_allocator_proxy_.get();
+    configuration.transport_feedback_callback = feedback_observer_proxy_.get();
 
     _rtpRtcpModule.reset(RtpRtcp::CreateRtpRtcp(configuration));
 
@@ -1020,11 +1132,11 @@ Channel::Init()
     }
 
     if (rx_audioproc_->noise_suppression()->set_level(kDefaultNsMode) != 0) {
-      LOG_FERR1(LS_ERROR, noise_suppression()->set_level, kDefaultNsMode);
+      LOG(LS_ERROR) << "noise_suppression()->set_level(kDefaultNsMode) failed.";
       return -1;
     }
     if (rx_audioproc_->gain_control()->set_mode(kDefaultRxAgcMode) != 0) {
-      LOG_FERR1(LS_ERROR, gain_control()->set_mode, kDefaultRxAgcMode);
+      LOG(LS_ERROR) << "gain_control()->set_mode(kDefaultRxAgcMode) failed.";
       return -1;
     }
 
@@ -1242,7 +1354,12 @@ Channel::DeRegisterVoiceEngineObserver()
 int32_t
 Channel::GetSendCodec(CodecInst& codec)
 {
-    return (audio_coding_->SendCodec(&codec));
+  auto send_codec = audio_coding_->SendCodec();
+  if (send_codec) {
+    codec = *send_codec;
+    return 0;
+  }
+  return -1;
 }
 
 int32_t
@@ -1627,16 +1744,15 @@ bool Channel::HandleRtxPacket(const uint8_t* packet,
                  "Multiple RTX headers detected, dropping packet");
     return false;
   }
-  uint8_t* restored_packet_ptr = restored_packet_;
   if (!rtp_payload_registry_->RestoreOriginalPacket(
-      &restored_packet_ptr, packet, &packet_length, rtp_receiver_->SSRC(),
-      header)) {
+          restored_packet_, packet, &packet_length, rtp_receiver_->SSRC(),
+          header)) {
     WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVoice, _channelId,
                  "Incoming RTX packet: invalid RTP header");
     return false;
   }
   restored_packet_in_use_ = true;
-  bool ret = OnRecoveredPacket(restored_packet_ptr, packet_length);
+  bool ret = OnRecoveredPacket(restored_packet_, packet_length);
   restored_packet_in_use_ = false;
   return ret;
 }
@@ -2368,6 +2484,9 @@ int Channel::SendTelephoneEventOutband(unsigned char eventCode,
     WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId, _channelId),
                "Channel::SendTelephoneEventOutband(..., playDtmfEvent=%d)",
                playDtmfEvent);
+    if (!Sending()) {
+      return -1;
+    }
 
     _playOutbandDtmfEvent = playDtmfEvent;
 
@@ -2780,6 +2899,33 @@ int Channel::SetReceiveAbsoluteSenderTimeStatus(bool enable, unsigned char id) {
   return 0;
 }
 
+void Channel::EnableSendTransportSequenceNumber(int id) {
+  int ret =
+      SetSendRtpHeaderExtension(true, kRtpExtensionTransportSequenceNumber, id);
+  RTC_DCHECK_EQ(0, ret);
+}
+
+void Channel::SetCongestionControlObjects(
+    RtpPacketSender* rtp_packet_sender,
+    TransportFeedbackObserver* transport_feedback_observer,
+    PacketRouter* packet_router) {
+  RTC_DCHECK(feedback_observer_proxy_.get());
+  RTC_DCHECK(seq_num_allocator_proxy_.get());
+  RTC_DCHECK(rtp_packet_sender_proxy_.get());
+  RTC_DCHECK(packet_router != nullptr || packet_router_ != nullptr);
+  feedback_observer_proxy_->SetTransportFeedbackObserver(
+      transport_feedback_observer);
+  seq_num_allocator_proxy_->SetSequenceNumberAllocator(packet_router);
+  rtp_packet_sender_proxy_->SetPacketSender(rtp_packet_sender);
+  _rtpRtcpModule->SetStorePacketsStatus(rtp_packet_sender != nullptr, 600);
+  if (packet_router != nullptr) {
+    packet_router->AddRtpModule(_rtpRtcpModule.get());
+  } else {
+    packet_router_->RemoveRtpModule(_rtpRtcpModule.get());
+  }
+  packet_router_ = packet_router;
+}
+
 void Channel::SetRTCPStatus(bool enable) {
   WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId, _channelId),
                "Channel::SetRTCPStatus()");
@@ -3158,7 +3304,9 @@ bool Channel::GetCodecFECStatus() {
 
 void Channel::SetNACKStatus(bool enable, int maxNumberOfPackets) {
   // None of these functions can fail.
-  _rtpRtcpModule->SetStorePacketsStatus(enable, maxNumberOfPackets);
+  // If pacing is enabled we always store packets.
+  if (!pacing_enabled_)
+    _rtpRtcpModule->SetStorePacketsStatus(enable, maxNumberOfPackets);
   rtp_receive_statistics_->SetMaxReorderingThreshold(maxNumberOfPackets);
   rtp_receiver_->SetNACKStatus(enable ? kNackRtcp : kNackOff);
   if (enable)
@@ -3411,32 +3559,16 @@ bool Channel::GetDelayEstimate(int* jitter_buffer_delay_ms,
   return true;
 }
 
+uint32_t Channel::GetDelayEstimate() const {
+  int jitter_buffer_delay_ms = 0;
+  int playout_buffer_delay_ms = 0;
+  GetDelayEstimate(&jitter_buffer_delay_ms, &playout_buffer_delay_ms);
+  return jitter_buffer_delay_ms + playout_buffer_delay_ms;
+}
+
 int Channel::LeastRequiredDelayMs() const {
   return audio_coding_->LeastRequiredDelayMs();
 }
-
-int Channel::SetInitialPlayoutDelay(int delay_ms)
-{
-  WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,_channelId),
-               "Channel::SetInitialPlayoutDelay()");
-  if ((delay_ms < kVoiceEngineMinMinPlayoutDelayMs) ||
-      (delay_ms > kVoiceEngineMaxMinPlayoutDelayMs))
-  {
-    _engineStatisticsPtr->SetLastError(
-        VE_INVALID_ARGUMENT, kTraceError,
-        "SetInitialPlayoutDelay() invalid min delay");
-    return -1;
-  }
-  if (audio_coding_->SetInitialPlayoutDelay(delay_ms) != 0)
-  {
-    _engineStatisticsPtr->SetLastError(
-        VE_AUDIO_CODING_MODULE_ERROR, kTraceError,
-        "SetInitialPlayoutDelay() failed to set min playout delay");
-    return -1;
-  }
-  return 0;
-}
-
 
 int
 Channel::SetMinimumPlayoutDelay(int delayMs)

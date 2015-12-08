@@ -13,11 +13,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
 #include "webrtc/modules/rtp_rtcp/test/BWEStandAlone/TestLoadGenerator.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/tick_util.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/tick_util.h"
 #include "webrtc/test/channel_transport/udp_transport.h"
 
 #define NR_OF_SOCKET_BUFFERS 500
@@ -39,6 +39,7 @@ TestSenderReceiver::TestSenderReceiver (void)
 :
 _critSect(CriticalSectionWrapper::CreateCriticalSection()),
 _eventPtr(NULL),
+_procThread(ProcThreadFunction, this, "TestSenderReceiver"),
 _running(false),
 _payloadType(0),
 _loadGenerator(NULL),
@@ -162,9 +163,6 @@ int32_t TestSenderReceiver::Start()
         exit(1);
     }
 
-    _procThread = ThreadWrapper::CreateThread(ProcThreadFunction, this,
-                                              "TestSenderReceiver");
-
     _running = true;
 
     if (_isReceiver)
@@ -176,8 +174,8 @@ int32_t TestSenderReceiver::Start()
         }
     }
 
-    _procThread->Start();
-    _procThread->SetPriority(kRealtimePriority);
+    _procThread.Start();
+    _procThread.SetPriority(rtc::kRealtimePriority);
 
     return 0;
 
@@ -190,13 +188,12 @@ int32_t TestSenderReceiver::Stop ()
 
     _transport->StopReceiving();
 
-    if (_procThread)
+    if (_running)
     {
         _running = false;
         _eventPtr->Set();
 
-        _procThread->Stop();
-        _procThread.reset();
+        _procThread.Stop();
 
         delete _eventPtr;
     }

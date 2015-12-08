@@ -22,7 +22,7 @@
 #include "webrtc/common_audio/channel_buffer.h"
 #include "webrtc/common_audio/wav_file.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
-#include "webrtc/modules/interface/module_common_types.h"
+#include "webrtc/modules/include/module_common_types.h"
 
 namespace webrtc {
 
@@ -41,6 +41,35 @@ class RawFile final {
   FILE* file_handle_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(RawFile);
+};
+
+// Reads ChannelBuffers from a provided WavReader.
+class ChannelBufferWavReader final {
+ public:
+  explicit ChannelBufferWavReader(rtc::scoped_ptr<WavReader> file);
+
+  // Reads data from the file according to the |buffer| format. Returns false if
+  // a full buffer can't be read from the file.
+  bool Read(ChannelBuffer<float>* buffer);
+
+ private:
+  rtc::scoped_ptr<WavReader> file_;
+  std::vector<float> interleaved_;
+
+  RTC_DISALLOW_COPY_AND_ASSIGN(ChannelBufferWavReader);
+};
+
+// Writes ChannelBuffers to a provided WavWriter.
+class ChannelBufferWavWriter final {
+ public:
+  explicit ChannelBufferWavWriter(rtc::scoped_ptr<WavWriter> file);
+  void Write(const ChannelBuffer<float>& buffer);
+
+ private:
+  rtc::scoped_ptr<WavWriter> file_;
+  std::vector<float> interleaved_;
+
+  RTC_DISALLOW_COPY_AND_ASSIGN(ChannelBufferWavWriter);
 };
 
 void WriteIntData(const int16_t* data,
@@ -117,6 +146,9 @@ std::vector<T> ParseList(const std::string& to_parse) {
 // appropriate error message has been printed to stdout.
 std::vector<Point> ParseArrayGeometry(const std::string& mic_positions,
                                       size_t num_mics);
+
+// Same as above, but without the num_mics check for when it isn't available.
+std::vector<Point> ParseArrayGeometry(const std::string& mic_positions);
 
 }  // namespace webrtc
 

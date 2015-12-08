@@ -128,7 +128,6 @@ class SocketAddress {
   // That is, 0.0.0.0 or ::.
   // Hostname and/or port may be set.
   bool IsAnyIP() const;
-  inline bool IsAny() const { return IsAnyIP(); }  // deprecated
 
   // Determines whether the IP address refers to a loopback address.
   // For v4 addresses this means the address is in the range 127.0.0.0/8.
@@ -142,7 +141,6 @@ class SocketAddress {
 
   // Determines whether the hostname has been resolved to an IP.
   bool IsUnresolvedIP() const;
-  inline bool IsUnresolved() const { return IsUnresolvedIP(); }  // deprecated
 
   // Determines whether this address is identical to the given one.
   bool operator ==(const SocketAddress& addr) const;
@@ -177,15 +175,6 @@ class SocketAddress {
   // written to the sockaddr_storage, or zero on failure.
   size_t ToDualStackSockAddrStorage(sockaddr_storage* saddr) const;
   size_t ToSockAddrStorage(sockaddr_storage* saddr) const;
-
-  // Converts the IP address given in 'compact form' into dotted form.
-  // IP is given as an integer in host byte order. V4 only, to be deprecated.
-  // TODO: Deprecate this.
-  static std::string IPToString(uint32_t ip_as_host_order_integer);
-
-  // Same as IPToString but anonymizes it by hiding the last part.
-  // TODO: Deprecate this.
-  static std::string IPToSensitiveString(uint32_t ip_as_host_order_integer);
 
   // Converts the IP address given in dotted form into compact form.
   // Only dotted names (A.B.C.D) are  converted.

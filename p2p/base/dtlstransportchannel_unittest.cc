@@ -28,11 +28,11 @@
     return;                                         \
   }
 
-static const char AES_CM_128_HMAC_SHA1_80[] = "AES_CM_128_HMAC_SHA1_80";
 static const char kIceUfrag1[] = "TESTICEUFRAG0001";
 static const char kIcePwd1[] = "TESTICEPWD00000000000001";
 static const size_t kPacketNumOffset = 8;
 static const size_t kPacketHeaderLen = 12;
+static const int kFakePacketId = 0x1234;
 
 static bool IsRtpLeadByte(uint8_t b) {
   return ((b & 0xC0) == 0x80);
@@ -86,6 +86,8 @@ class DtlsTestClient : public sigslot::has_slots<> {
         &DtlsTestClient::OnTransportChannelWritableState);
       channel->SignalReadPacket.connect(this,
         &DtlsTestClient::OnTransportChannelReadPacket);
+      channel->SignalSentPacket.connect(
+          this, &DtlsTestClient::OnTransportChannelSentPacket);
       channels_.push_back(channel);
 
       // Hook the raw packets so that we can verify they are encrypted.
@@ -147,9 +149,9 @@ class DtlsTestClient : public sigslot::has_slots<> {
       // SRTP ciphers will be set only in the beginning.
       for (std::vector<cricket::DtlsTransportChannelWrapper*>::iterator it =
            channels_.begin(); it != channels_.end(); ++it) {
-        std::vector<std::string> ciphers;
-        ciphers.push_back(AES_CM_128_HMAC_SHA1_80);
-        ASSERT_TRUE((*it)->SetSrtpCiphers(ciphers));
+        std::vector<int> ciphers;
+        ciphers.push_back(rtc::SRTP_AES128_CM_SHA1_80);
+        ASSERT_TRUE((*it)->SetSrtpCryptoSuites(ciphers));
       }
     }
 
@@ -212,16 +214,16 @@ class DtlsTestClient : public sigslot::has_slots<> {
     }
   }
 
-  void CheckSrtp(const std::string& expected_cipher) {
+  void CheckSrtp(int expected_crypto_suite) {
     for (std::vector<cricket::DtlsTransportChannelWrapper*>::iterator it =
            channels_.begin(); it != channels_.end(); ++it) {
-      std::string cipher;
+      int crypto_suite;
 
-      bool rv = (*it)->GetSrtpCryptoSuite(&cipher);
-      if (negotiated_dtls_ && !expected_cipher.empty()) {
+      bool rv = (*it)->GetSrtpCryptoSuite(&crypto_suite);
+      if (negotiated_dtls_ && expected_crypto_suite) {
         ASSERT_TRUE(rv);
 
-        ASSERT_EQ(cipher, expected_cipher);
+        ASSERT_EQ(crypto_suite, expected_crypto_suite);
       } else {
         ASSERT_FALSE(rv);
       }
@@ -259,6 +261,7 @@ class DtlsTestClient : public sigslot::has_slots<> {
       // Only set the bypass flag if we've activated DTLS.
       int flags = (certificate_ && srtp) ? cricket::PF_SRTP_BYPASS : 0;
       rtc::PacketOptions packet_options;
+      packet_options.packet_id = kFakePacketId;
       int rv = channels_[channel]->SendPacket(
           packet.get(), size, packet_options, flags);
       ASSERT_GT(rv, 0);
@@ -338,6 +341,13 @@ class DtlsTestClient : public sigslot::has_slots<> {
     ASSERT_EQ(expected_flags, flags);
   }
 
+  void OnTransportChannelSentPacket(cricket::TransportChannel* channel,
+                                    const rtc::SentPacket& sent_packet) {
+    sent_packet_ = sent_packet;
+  }
+
+  rtc::SentPacket sent_packet() const { return sent_packet_; }
+
   // Hook into the raw packet stream to make sure DTLS packets are encrypted.
   void OnFakeTransportChannelReadPacket(cricket::TransportChannel* channel,
                                         const char* data, size_t size,
@@ -378,6 +388,7 @@ class DtlsTestClient : public sigslot::has_slots<> {
   bool negotiated_dtls_;
   bool received_dtls_client_hello_;
   bool received_dtls_server_hello_;
+  rtc::SentPacket sent_packet_;
 };
 
 
@@ -457,11 +468,11 @@ class DtlsTransportChannelTest : public testing::Test {
 
     // Check that we negotiated the right ciphers.
     if (use_dtls_srtp_) {
-      client1_.CheckSrtp(AES_CM_128_HMAC_SHA1_80);
-      client2_.CheckSrtp(AES_CM_128_HMAC_SHA1_80);
+      client1_.CheckSrtp(rtc::SRTP_AES128_CM_SHA1_80);
+      client2_.CheckSrtp(rtc::SRTP_AES128_CM_SHA1_80);
     } else {
-      client1_.CheckSrtp("");
-      client2_.CheckSrtp("");
+      client1_.CheckSrtp(rtc::SRTP_INVALID_CRYPTO_SUITE);
+      client2_.CheckSrtp(rtc::SRTP_INVALID_CRYPTO_SUITE);
     }
     client1_.CheckSsl(rtc::SSLStreamAdapter::GetDefaultSslCipherForTest(
         ssl_expected_version_, rtc::KT_DEFAULT));
@@ -556,6 +567,15 @@ TEST_F(DtlsTransportChannelTest, TestChannelSetupIce) {
 TEST_F(DtlsTransportChannelTest, TestTransfer) {
   ASSERT_TRUE(Connect());
   TestTransfer(0, 1000, 100, false);
+}
+
+// Connect without DTLS, and transfer some data.
+TEST_F(DtlsTransportChannelTest, TestOnSentPacket) {
+  ASSERT_TRUE(Connect());
+  EXPECT_EQ(client1_.sent_packet().send_time_ms, -1);
+  TestTransfer(0, 1000, 100, false);
+  EXPECT_EQ(kFakePacketId, client1_.sent_packet().packet_id);
+  EXPECT_GE(client1_.sent_packet().send_time_ms, 0);
 }
 
 // Create two channels without DTLS, and transfer some data.

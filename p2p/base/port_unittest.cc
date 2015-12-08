@@ -17,6 +17,7 @@
 #include "webrtc/p2p/base/testturnserver.h"
 #include "webrtc/p2p/base/transport.h"
 #include "webrtc/p2p/base/turnport.h"
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/crc32.h"
 #include "webrtc/base/gunit.h"
 #include "webrtc/base/helpers.h"
@@ -201,7 +202,7 @@ class TestPort : public Port {
  private:
   rtc::scoped_ptr<ByteBuffer> last_stun_buf_;
   rtc::scoped_ptr<IceMessage> last_stun_msg_;
-  int type_preference_;
+  int type_preference_ = 0;
 };
 
 class TestChannel : public sigslot::has_slots<> {
@@ -456,9 +457,8 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
   }
   UDPPort* CreateUdpPort(const SocketAddress& addr,
                          PacketSocketFactory* socket_factory) {
-    return UDPPort::Create(main_, socket_factory, &network_,
-                           addr.ipaddr(), 0, 0, username_, password_,
-                           std::string(), false);
+    return UDPPort::Create(main_, socket_factory, &network_, addr.ipaddr(), 0,
+                           0, username_, password_, std::string(), true);
   }
   TCPPort* CreateTcpPort(const SocketAddress& addr) {
     return CreateTcpPort(addr, &socket_factory_);
@@ -1234,6 +1234,51 @@ TEST_F(PortTest, TestSslTcpToSslTcpRelay) {
   TestSslTcpToRelay(PROTO_SSLTCP);
 }
 */
+
+// Test that a connection will be dead and deleted if
+// i) it has never received anything for MIN_CONNECTION_LIFETIME milliseconds
+//    since it was created, or
+// ii) it has not received anything for DEAD_CONNECTION_RECEIVE_TIMEOUT
+//     milliseconds since last receiving.
+TEST_F(PortTest, TestConnectionDead) {
+  UDPPort* port1 = CreateUdpPort(kLocalAddr1);
+  UDPPort* port2 = CreateUdpPort(kLocalAddr2);
+  TestChannel ch1(port1);
+  TestChannel ch2(port2);
+  // Acquire address.
+  ch1.Start();
+  ch2.Start();
+  ASSERT_EQ_WAIT(1, ch1.complete_count(), kTimeout);
+  ASSERT_EQ_WAIT(1, ch2.complete_count(), kTimeout);
+
+  uint32_t before_created = rtc::Time();
+  ch1.CreateConnection(GetCandidate(port2));
+  uint32_t after_created = rtc::Time();
+  Connection* conn = ch1.conn();
+  ASSERT(conn != nullptr);
+  // If the connection has never received anything, it will be dead after
+  // MIN_CONNECTION_LIFETIME
+  conn->UpdateState(before_created + MIN_CONNECTION_LIFETIME - 1);
+  rtc::Thread::Current()->ProcessMessages(100);
+  EXPECT_TRUE(ch1.conn() != nullptr);
+  conn->UpdateState(after_created + MIN_CONNECTION_LIFETIME + 1);
+  EXPECT_TRUE_WAIT(ch1.conn() == nullptr, kTimeout);
+
+  // Create a connection again and receive a ping.
+  ch1.CreateConnection(GetCandidate(port2));
+  conn = ch1.conn();
+  ASSERT(conn != nullptr);
+  uint32_t before_last_receiving = rtc::Time();
+  conn->ReceivedPing();
+  uint32_t after_last_receiving = rtc::Time();
+  // The connection will be dead after DEAD_CONNECTION_RECEIVE_TIMEOUT
+  conn->UpdateState(
+      before_last_receiving + DEAD_CONNECTION_RECEIVE_TIMEOUT - 1);
+  rtc::Thread::Current()->ProcessMessages(100);
+  EXPECT_TRUE(ch1.conn() != nullptr);
+  conn->UpdateState(after_last_receiving + DEAD_CONNECTION_RECEIVE_TIMEOUT + 1);
+  EXPECT_TRUE_WAIT(ch1.conn() == nullptr, kTimeout);
+}
 
 // This test case verifies standard ICE features in STUN messages. Currently it
 // verifies Message Integrity attribute in STUN messages and username in STUN
@@ -2224,7 +2269,7 @@ TEST_F(PortTest, TestWritableState) {
 
   // Data should be unsendable until the connection is accepted.
   char data[] = "abcd";
-  int data_size = ARRAY_SIZE(data);
+  int data_size = arraysize(data);
   rtc::PacketOptions options;
   EXPECT_EQ(SOCKET_ERROR, ch1.conn()->Send(data, data_size, options));
 
