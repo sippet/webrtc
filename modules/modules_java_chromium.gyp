@@ -15,7 +15,6 @@
         'java_in_dir': 'audio_device/android/java',
         'additional_src_dirs': [ '../base/java/src', ],
       },
-
       'includes': [ '../../../build/java.gypi' ],
     }, # audio_device_module_java
     {

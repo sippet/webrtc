@@ -45,6 +45,7 @@ namespace acm2 {
 
 CodecOwner::CodecOwner() : external_speech_encoder_(nullptr) {
 }
+
 CodecOwner::~CodecOwner() = default;
 
 namespace {
