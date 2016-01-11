@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/arraysize.h"
 #include "webrtc/modules/audio_coding/codecs/g729/interface/g729_interface.h"
 #include "webrtc/modules/audio_coding/codecs/g729/g729_inst.h"
 #include "webrtc/modules/audio_coding/neteq/tools/audio_loop.h"
@@ -344,7 +345,7 @@ class G729Test : public TestWithParam<const char*> {
   WebRtcG729DecInst* g729_decoder_;
 
   AudioLoop speech_data_;
-  scoped_ptr<uint8_t[]> expected_bitstream_;
+  rtc::scoped_ptr<uint8_t[]> expected_bitstream_;
   std::string input_name_;
   uint8_t bitstream_[kMaxBytes];
   int encoded_bytes_;
@@ -376,7 +377,7 @@ void G729Test::PrepareSpeechData(int block_length_ms,
   size_t samples_read = fread(expected_bitstream_.get(), sizeof(uint8_t),
         loop_length_ms, fp);
   fclose(fp);
-  EXPECT_EQ(samples_read, loop_length_ms);
+  EXPECT_EQ(samples_read, size_t(loop_length_ms));
 }
 
 int G729Test::EncodeDecode(WebRtcG729EncInst* encoder,

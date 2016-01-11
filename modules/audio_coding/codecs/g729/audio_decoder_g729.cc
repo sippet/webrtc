@@ -10,6 +10,7 @@ namespace webrtc {
 
 AudioDecoderG729::AudioDecoderG729() {
   WebRtcG729_DecoderCreate(&dec_state_);
+  Reset();
 }
 
 AudioDecoderG729::~AudioDecoderG729() {

@@ -146,13 +146,9 @@
             '<(DEPTH)/testing/gtest.gyp:gtest',
             '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
             '<(webrtc_root)/test/test.gyp:test_support_main',
-            '<(DEPTH)/base/base.gyp:base',
           ],
           'defines': [
             '<@(neteq_defines)',
-          ],
-          'include_dirs': [
-            '<(DEPTH)/third_party/webrtc/overrides',
           ],
           'sources': [
             'audio_decoder_impl.cc',

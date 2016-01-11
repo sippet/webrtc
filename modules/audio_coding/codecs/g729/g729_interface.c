@@ -173,6 +173,7 @@ int16_t WebRtcG729_EncoderCreate(G729EncInst** inst) {
   *inst = (G729EncInst*) calloc(sizeof(G729EncInst), 1);
   if (!*inst)
     return -1;
+  WebRtcSpl_Init();
   return 0;
 }
 
@@ -200,6 +201,7 @@ int16_t WebRtcG729_DecoderCreate(G729DecInst** inst) {
   *inst = (G729DecInst *) calloc(sizeof(G729DecInst), 1);
   if (!*inst)
     return -1;
+  WebRtcSpl_Init();
   return 0;
 }
 

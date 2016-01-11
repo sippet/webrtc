@@ -44,6 +44,7 @@ AudioEncoderG729::AudioEncoderG729(const Config& config)
       << "Frame size must be an integer multiple of 10 ms.";
   speech_buffer_.reserve(kSamplesPer10msFrame);
   RTC_CHECK_EQ(0, WebRtcG729_EncoderCreate(&inst_));
+  Reset();
 }
 
 AudioEncoderG729::AudioEncoderG729(const CodecInst& codec_inst)

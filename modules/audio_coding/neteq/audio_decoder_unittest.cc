@@ -32,8 +32,8 @@
 #include "webrtc/modules/audio_coding/codecs/opus/interface/audio_encoder_opus.h"
 #include "webrtc/modules/audio_coding/codecs/pcm16b/include/audio_decoder_pcm16b.h"
 #include "webrtc/modules/audio_coding/codecs/pcm16b/include/audio_encoder_pcm16b.h"
-#include "webrtc/modules/audio_coding/codecs/g729/include/audio_encoder_g729.h"
-#include "webrtc/modules/audio_coding/codecs/g729/include/audio_decoder_g729.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/audio_encoder_g729.h"
+#include "webrtc/modules/audio_coding/codecs/g729/interface/audio_decoder_g729.h"
 #include "webrtc/modules/audio_coding/neteq/tools/resample_input_audio_file.h"
 #include "webrtc/system_wrappers/interface/data_log.h"
 #include "webrtc/test/testsupport/fileutils.h"
@@ -679,6 +679,15 @@ TEST_F(AudioDecoderG729Test, EncodeDecode) {
   EXPECT_TRUE(decoder_->HasDecodePlc());
 }
 
+namespace {
+#ifdef WEBRTC_CODEC_ILBC
+const bool has_ilbc = true;
+#else
+const bool has_ilbc = false;
+#endif
+#if defined(WEBRTC_CODEC_ISAC) || defined(WEBRTC_CODEC_ISACFX)
+const bool has_isac = true;
+#else
 const bool has_isac = false;
 #endif
 #ifdef WEBRTC_CODEC_ISAC
