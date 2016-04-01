@@ -411,9 +411,6 @@ class Connection : public rtc::MessageHandler,
 
   virtual ~Connection();
 
-  // Force this connection to start sending/receiving
-  void ForceStart();
-
   // The local port where this connection sends and receives packets.
   Port* port() { return port_; }
   const Port* port() const { return port_; }

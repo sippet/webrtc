@@ -1192,11 +1192,6 @@ std::string Connection::ToSensitiveString() const {
   return ToString();
 }
 
-void Connection::ForceStart() {
-  set_write_state(STATE_WRITABLE);
-  set_state(STATE_SUCCEEDED);
-}
-
 void Connection::OnConnectionRequestResponse(ConnectionRequest* request,
                                              StunMessage* response) {
   // Log at LS_INFO if we receive a ping response on an unwritable
